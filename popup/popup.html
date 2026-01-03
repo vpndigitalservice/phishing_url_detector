@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phish Guard</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🛡️ Phish Guard</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Idle</span>
+            </div>
+        </div>
+
+        <!-- Current Site Info -->
+        <div class="card">
+            <h3>Current Website</h3>
+            <div class="url-display" id="currentUrl">Loading...</div>
+            
+            <!-- Risk Score -->
+            <div class="risk-score">
+                <div class="score-header">
+                    <span>Risk Score</span>
+                    <span id="scoreValue">--</span>
+                </div>
+                <div class="score-bar">
+                    <div class="score-fill" id="scoreFill"></div>
+                </div>
+                <div class="score-labels">
+                    <span>Safe</span>
+                    <span>Suspicious</span>
+                    <span>Dangerous</span>
+                </div>
+            </div>
+
+            <!-- Warnings -->
+            <div class="warnings" id="warningsContainer">
+                <h4>Warnings</h4>
+                <div class="warnings-list" id="warningsList">
+                    No warnings detected
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="actions">
+            <button id="scanBtn" class="btn btn-primary">
+                🔍 Scan Now
+            </button>
+            <button id="whitelistBtn" class="btn btn-secondary">
+                ✅ Whitelist Site
+            </button>
+            <button id="reportBtn" class="btn btn-danger">
+                ⚠️ Report Phishing
+            </button>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="stats">
+            <div class="stat-item">
+                <span class="stat-label">Scanned Today</span>
+                <span class="stat-value" id="scannedCount">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Blocked</span>
+                <span class="stat-value" id="blockedCount">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Version</span>
+                <span class="stat-value">Basic</span>
+            </div>
+        </div>
+
+        <!-- Settings Link -->
+        <div class="footer">
+            <a href="#" id="settingsLink">⚙️ Settings</a>
+            <a href="#" id="helpLink">❓ Help</a>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
