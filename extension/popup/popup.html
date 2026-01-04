@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phish Guard</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header with Tabs -->
+        <div class="header">
+            <h1>🛡️ Phish Guard</h1>
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Idle</span>
+            </div>
+        </div>
+        
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="main">🔍 Scan</button>
+            <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
+            <button class="tab-btn" data-tab="help">❓ Help</button>
+        </div>
+
+        <!-- Main Tab Content -->
+        <div class="tab-content active" id="main-tab">
+            <!-- Current Site Info -->
+            <div class="card">
+                <h3>Current Website</h3>
+                <div class="url-display" id="currentUrl">Loading...</div>
+                
+                <!-- Risk Score -->
+                <div class="risk-score">
+                    <div class="score-header">
+                        <span>Risk Score</span>
+                        <span id="scoreValue">--</span>
+                    </div>
+                    <div class="score-bar">
+                        <div class="score-fill" id="scoreFill"></div>
+                    </div>
+                    <div class="score-labels">
+                        <span>Safe</span>
+                        <span>Suspicious</span>
+                        <span>Dangerous</span>
+                    </div>
+                </div>
+
+                <!-- Warnings -->
+                <div class="warnings" id="warningsContainer">
+                    <h4>Warnings</h4>
+                    <div class="warnings-list" id="warningsList">
+                        No warnings detected
+                    </div>
+                </div>
+            </div>
+               
+            <!-- Action Buttons -->
+                <div class="actions">
+                    <button id="quickScanBtn" class="btn btn-secondary">
+                        ⚡ Quick Check
+                    </button>
+                    <button id="deepScanBtn" class="btn btn-primary">
+                        🧠 Deep ML Scan
+                    </button>
+                    <button id="whitelistBtn" class="btn btn-secondary">
+                        ✅ Whitelist
+                    </button>
+                    <button id="reportBtn" class="btn btn-danger">
+                        ⚠️ Report
+                    </button>
+             </div>
+
+            <!-- Quick Stats -->
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-label">Scanned Today</span>
+                    <span class="stat-value" id="scannedCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Blocked</span>
+                    <span class="stat-value" id="blockedCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Version</span>
+                    <span class="stat-value">1.0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab Content -->
+        <div class="tab-content" id="settings-tab">
+            <div class="card">
+                <h3>⚙️ Settings</h3>
+                
+                <!-- Protection Settings -->
+                <div class="settings-group">
+                    <h4>Protection Level</h4>
+                    
+                    <div class="setting-item">
+                        <label for="protectionLevel">Scan Sensitivity</label>
+                        <select id="protectionLevel">
+                            <option value="low">Low (Fewer alerts)</option>
+                            <option value="medium" selected>Medium (Recommended)</option>
+                            <option value="high">High (Maximum protection)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="autoScan" checked>
+                            <span class="checkbox-custom"></span>
+                            Auto-scan websites
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="blockDangerous" checked>
+                            <span class="checkbox-custom"></span>
+                            Block dangerous sites automatically
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Notifications -->
+                <div class="settings-group">
+                    <h4>Notifications</h4>
+                    
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="showWarnings" checked>
+                            <span class="checkbox-custom"></span>
+                            Show warning badges
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="soundAlerts">
+                            <span class="checkbox-custom"></span>
+                            Play alert sounds
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Privacy -->
+                <div class="settings-group">
+                    <h4>Privacy & Data</h4>
+                    
+                    <div class="setting-item">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="shareReports">
+                            <span class="checkbox-custom"></span>
+                            Share anonymous reports
+                            <span class="help-text">Help improve phishing detection</span>
+                        </label>
+                    </div>
+                    
+                    <div class="setting-item">
+                        <label>Clear Data</label>
+                        <button id="clearDataBtn" class="btn-small">Clear All Data</button>
+                    </div>
+                </div>
+                
+                <!-- Save Button -->
+                <div class="actions">
+                    <button id="saveSettingsBtn" class="btn btn-primary">
+                        💾 Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Tab Content -->
+        <div class="tab-content" id="help-tab">
+            <div class="card">
+                <h3>❓ Help & Information</h3>
+                
+                <!-- Quick Guide -->
+                <div class="help-section">
+                    <h4>🚀 Quick Start Guide</h4>
+                    <ol class="help-list">
+                        <li><strong>Click the Phish Guard icon</strong> to open this popup</li>
+                        <li><strong>View the risk score</strong> for the current website</li>
+                        <li><strong>Click "🧠 Deep ML Scan"</strong> for detailed ML analysis</li>
+                        <li><strong>Click "⚡ Quick Check"</strong> Basic pattern matching for fast safety check</li>
+                        <li><strong>Use "Whitelist"</strong> for trusted sites</li>
+                        <li><strong>Report suspicious sites</strong> to help improve detection</li>
+                    </ol>
+                </div>
+                
+                <!-- Understanding Scores -->
+                <div class="help-section">
+                    <h4>📊 Understanding Risk Scores</h4>
+                    <div class="score-explanation">
+                        <div class="score-item safe">
+                            <span class="score-color" style="background: #4ade80;"></span>
+                            <span class="score-range">0-29</span>
+                            <span class="score-label">Safe - Website appears legitimate</span>
+                        </div>
+                        <div class="score-item warning">
+                            <span class="score-color" style="background: #fbbf24;"></span>
+                            <span class="score-range">30-69</span>
+                            <span class="score-label">Suspicious - Exercise caution</span>
+                        </div>
+                        <div class="score-item danger">
+                            <span class="score-color" style="background: #ef4444;"></span>
+                            <span class="score-range">70-100</span>
+                            <span class="score-label">Dangerous - Avoid entering information</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Features -->
+                <div class="help-section">
+                    <h4>✨ Features</h4>
+                    <div class="features-grid">
+                        <div class="feature">
+                            <div class="feature-icon">🔍</div>
+                            <div class="feature-text">
+                                <strong>Real-time Scanning</strong>
+                                <p>Automatically analyzes every website you visit</p>
+                            </div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">🧠</div>
+                            <div class="feature-text">
+                                <strong>ML-Powered Detection</strong>
+                                <p>Uses machine learning to identify phishing attempts</p>
+                            </div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">⚠️</div>
+                            <div class="feature-text">
+                                <strong>Visual Warnings</strong>
+                                <p>Color-coded badges indicate risk levels</p>
+                            </div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">📊</div>
+                            <div class="feature-text">
+                                <strong>Detailed Analysis</strong>
+                                <p>Shows specific reasons for warnings</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tips -->
+                <div class="help-section">
+                    <h4>💡 Safety Tips</h4>
+                    <div class="tip">
+                        <strong>Always check for HTTPS</strong> - Look for the padlock icon in the address bar
+                    </div>
+                    <div class="tip">
+                        <strong>Be wary of urgent messages</strong> - Phishing often creates false urgency
+                    </div>
+                    <div class="tip">
+                        <strong>Check URLs carefully</strong> - Phishers use domains that look similar to legitimate sites
+                    </div>
+                    <div class="tip warning">
+                        <strong>Never share passwords</strong> - Legitimate companies will never ask for your password via email
+                    </div>
+                </div>
+                
+                <!-- FAQ -->
+                <div class="help-section">
+                    <h4>❓ FAQ</h4>
+                    <div class="faq-item">
+                        <div class="faq-question">Does Phish Guard collect personal data?</div>
+                        <div class="faq-answer">No. Only URLs and website content are analyzed for phishing detection.</div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">Can I disable auto-scanning?</div>
+                        <div class="faq-answer">Yes! Go to Settings → Protection Level to adjust scanning preferences.</div>
+                    </div>
+                    <div class="faq-item">
+                        <div class="faq-question">How accurate is the detection?</div>
+                        <div class="faq-answer">The ML model achieves over 93% accuracy, but always use your own judgment.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

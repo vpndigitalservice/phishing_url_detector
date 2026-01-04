@@ -65,6 +65,8 @@ async function analyzeUrl(url, tabId) {
         // Store analysis
         const urlKey = `analysis_${url}`;
         await chrome.storage.local.set({ [urlKey]: analysis });
+         // Send to popup if open
+        sendToPopup(analysis, url);
         
         // Notify popup if open
         try {
@@ -325,4 +327,64 @@ chrome.runtime.onInstalled.addListener(() => {
     });
     
     console.log('Phish Guard extension installed');
+});
+
+// Send analysis update to popup if it's open
+async function sendToPopup(analysis, url) {
+    try {
+        // Send message to popup if it's open
+        chrome.runtime.sendMessage({
+            type: 'ANALYSIS_UPDATE',
+            analysis: analysis,
+            url: url
+        });
+    } catch (error) {
+        // Popup not open, ignore error
+    }
+}
+
+// Detect when user switches tabs
+chrome.tabs.onActivated.addListener((activeInfo) => {
+    console.log("🔄 Tab activated:", activeInfo.tabId);
+    
+    // Get the tab info
+    chrome.tabs.get(activeInfo.tabId, (tab) => {
+        if (tab && tab.url) {
+            console.log("📄 New active tab URL:", tab.url);
+            
+            // Analyze the new tab
+            analyzeUrl(tab.url, tab.id);
+            
+            // Notify popup about tab change
+            try {
+                chrome.runtime.sendMessage({
+                    type: 'TAB_UPDATED',
+                    tabId: tab.id,
+                    url: tab.url
+                });
+            } catch (error) {
+                // Popup not open
+            }
+        }
+    });
+});
+
+// Detect when tab URL changes
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    // Only analyze when page is fully loaded and URL changed
+    if (changeInfo.status === 'complete' && changeInfo.url) {
+        console.log("🔗 URL changed:", changeInfo.url);
+        analyzeUrl(changeInfo.url, tabId);
+        
+        // Notify popup
+        try {
+            chrome.runtime.sendMessage({
+                type: 'TAB_UPDATED',
+                tabId: tabId,
+                url: changeInfo.url
+            });
+        } catch (error) {
+            // Popup not open
+        }
+    }
 });
