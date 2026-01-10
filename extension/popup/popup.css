@@ -15,7 +15,7 @@ body {
     padding: 20px;
 }
 
-/* Header */
+/* Header with Logo */
 .header {
     display: flex;
     justify-content: space-between;
@@ -26,8 +26,46 @@ body {
 .header h1 {
     font-size: 18px;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Increased from 10px to 12px */
 }
 
+/* Company Logo Styling */
+/* Company Logo Styling - BIGGER */
+.company-logo {
+    width: 40px;  /* Changed from 32px to 40px */
+    height: 40px; /* Changed from 32px to 40px */
+    object-fit: contain;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+    transition: transform 0.3s ease;
+}
+
+.company-logo:hover {
+    transform: scale(1.05);
+}
+
+/* Logo Container for consistent display */
+.logo-container {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Logo in Settings/Help tabs */
+.logo-small {
+    width: 24px;  /* Changed from 20px to 24px */
+    height: 24px; /* Changed from 20px to 24px */
+    margin-right: 8px; /* Added more spacing */
+    vertical-align: middle;
+    object-fit: contain;
+}
+
+/* Status Indicator */
 .status-indicator {
     display: flex;
     align-items: center;
@@ -70,8 +108,12 @@ body {
     font-size: 14px;
     margin-bottom: 10px;
     color: #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
+/* URL Display */
 .url-display {
     font-size: 12px;
     background: rgba(0, 0, 0, 0.2);
@@ -266,6 +308,15 @@ body {
     margin-bottom: 20px;
 }
 
+/* Logo in blocked page */
+.blocked-logo {
+    width: 72px;  /* Changed from 48px to 72px */
+    height: 72px; /* Changed from 48px to 72px */
+    margin-bottom: 20px; /* More spacing */
+    object-fit: contain;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
 
 /* ===== TABS ===== */
 .tabs {
@@ -335,6 +386,9 @@ body {
     font-size: 14px;
     margin-bottom: 15px;
     color: #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .setting-item {
@@ -579,3 +633,75 @@ body {
     line-height: 1.4;
 }
 
+/* Logo variants for different contexts */
+.logo-inline {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+}
+
+/* For tab icons - optional */
+.tab-btn .logo-small {
+    width: 20px;  /* Changed from 16px to 20px */
+    height: 20px; /* Changed from 16px to 20px */
+    opacity: 0.8;
+}
+
+.tab-btn:hover .logo-small,
+.tab-btn.active .logo-small {
+    opacity: 1;
+}
+
+/* For the footer - BIGGER */
+.footer-logo {
+    width: 20px;  /* Changed from 16px to 20px */
+    height: 20px; /* Changed from 16px to 20px */
+    vertical-align: middle;
+    margin-right: 6px; /* More spacing */
+    opacity: 0.8;
+    object-fit: contain;
+}
+
+.footer a:hover .footer-logo {
+    opacity: 1;
+}
+
+
+/* Add these to the existing style section */
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.blocked-container {
+    animation: fadeInUp 0.8s ease-out;
+}
+
+.risk-item {
+    animation: fadeInUp 0.5s ease-out;
+    animation-fill-mode: both;
+}
+
+.risk-item:nth-child(1) { animation-delay: 0.2s; }
+.risk-item:nth-child(2) { animation-delay: 0.3s; }
+.risk-item:nth-child(3) { animation-delay: 0.4s; }
+
+.btn-safe, .btn-danger {
+    animation: fadeInUp 0.6s ease-out;
+    animation-fill-mode: both;
+}
+
+.btn-safe { animation-delay: 0.5s; }
+.btn-danger { animation-delay: 0.6s; }

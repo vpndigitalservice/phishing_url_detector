@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Phish Guard",
+  "name": "Cyber Kavach",
   "version": "1.0.0",
   "description": "Detect phishing and malicious websites in real-time",
   
@@ -17,12 +17,13 @@
   ],
   
   "action": {
-    "default_popup":"popup/popup.html",
+    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    }
+    },
+    "default_title": "Cyber Kavach"
   },
   
   "background": {
@@ -38,12 +39,12 @@
     }
   ],
   
-    "web_accessible_resources": [
-    {
-      "resources": ["popup/settings.html", "popup/help.html"],
-      "matches": ["<all_urls>"]
-    }
-  ],
+ "web_accessible_resources": [
+  {
+    "resources": ["icons/company_logo.png", "popup/*"],
+    "matches": ["<all_urls>"]
+  }
+],
   
   "icons": {
     "16": "icons/icon16.png",

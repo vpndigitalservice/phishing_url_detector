@@ -1,5 +1,5 @@
 // ===== CLEAR DUAL-SCAN VERSION =====
-console.log("🚀 Phish Guard Popup loaded!");
+console.log("🚀 Cyber Kavach Popup loaded!");
 
 // DOM Elements
 const statusDot = document.getElementById('statusDot');
@@ -53,6 +53,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         console.error("❌ Initialization failed:", error);
         showError("Failed to initialize");
+    }
+});
+// Listen for report confirmation from background
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'REPORT_CONFIRMED') {
+        console.log('✅ Report confirmed:', message.url);
+        // You could show a toast notification here if needed
     }
 });
 
@@ -388,43 +395,71 @@ function setupAllListeners() {
         });
     }
     
+    
     // Report Button
-    if (reportBtn) {
-        reportBtn.addEventListener('click', async () => {
-            if (!currentTab?.url) return;
+// Report Button - DEBUG VERSION
+if (reportBtn) {
+    reportBtn.addEventListener('click', async () => {
+        if (!currentTab?.url) {
+            console.error('❌ No current tab URL');
+            return;
+        }
+        
+        console.log('📢 Report button clicked for:', currentTab.url);
+        
+        try {
+            // Send report to background script
+            const response = await chrome.runtime.sendMessage({
+                type: 'REPORT_SITE',
+                url: currentTab.url
+            });
             
-            try {
-                const urlObj = new URL(currentTab.url);
-                const blacklistData = await chrome.storage.local.get(['blacklist']);
-                const blacklist = blacklistData.blacklist || [];
+            console.log('📨 Report response:', response);
+            
+            if (response && response.success) {
+                // Update blocked count
+                const stats = await chrome.storage.local.get(['blockedCount']);
+                const newCount = (stats.blockedCount || 0) + 1;
+                await chrome.storage.local.set({ blockedCount: newCount });
                 
-                if (!blacklist.includes(urlObj.hostname)) {
-                    blacklist.push(urlObj.hostname);
-                    await chrome.storage.local.set({ blacklist: blacklist });
-                    
-                    // Update blocked count
-                    const stats = await chrome.storage.local.get(['blockedCount']);
-                    const newCount = (stats.blockedCount || 0) + 1;
-                    await chrome.storage.local.set({ blockedCount: newCount });
-                    if (blockedCount) blockedCount.textContent = newCount;
-                    
-                    reportBtn.innerHTML = '⚠️ Reported!';
-                    setTimeout(() => {
-                        reportBtn.innerHTML = '⚠️ Report';
-                    }, 2000);
-                    
-                    // Re-analyze with blacklist consideration
-                    if (lastAnalysis) {
-                        lastAnalysis.score = 95;
-                        lastAnalysis.warnings.push("🚨 Manually reported as phishing");
-                        updateDisplay(lastAnalysis);
-                    }
+                if (blockedCount) {
+                    blockedCount.textContent = newCount;
                 }
-            } catch (error) {
-                console.error("Report error:", error);
+                
+                // Update UI to show reported status
+                reportBtn.innerHTML = '✅ Reported!';
+                reportBtn.classList.remove('btn-danger');
+                reportBtn.classList.add('btn-secondary');
+                reportBtn.disabled = true;
+                
+                // Re-analyze with blacklist consideration
+                if (lastAnalysis) {
+                    lastAnalysis.score = 95;
+                    lastAnalysis.warnings.push("🚨 Manually reported as phishing");
+                    updateDisplay(lastAnalysis);
+                }
+                
+                // Reset button after 3 seconds
+                setTimeout(() => {
+                    reportBtn.innerHTML = '⚠️ Report';
+                    reportBtn.classList.remove('btn-secondary');
+                    reportBtn.classList.add('btn-danger');
+                    reportBtn.disabled = false;
+                }, 3000);
+                
+            } else {
+                throw new Error('Report failed: ' + (response?.error || 'Unknown error'));
             }
-        });
-    }
+            
+        } catch (error) {
+            console.error("❌ Report error:", error);
+            reportBtn.innerHTML = '❌ Failed';
+            setTimeout(() => {
+                reportBtn.innerHTML = '⚠️ Report';
+            }, 2000);
+        }
+    });
+}
     
     // Settings buttons
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
@@ -523,6 +558,7 @@ async function loadSettings() {
     }
 }
 
+  // In your saveSettings function in popup.js, add this:
 async function saveSettings() {
     try {
         const settings = {
@@ -535,8 +571,14 @@ async function saveSettings() {
             lastUpdated: Date.now()
         };
         
-        await chrome.storage.local.set(settings);
-        console.log('💾 Settings saved');
+        await chrome.storage.local.set({ settings: settings });
+        console.log('💾 Settings saved:', settings);
+        
+        // Notify background script about settings change
+        await chrome.runtime.sendMessage({
+            type: 'UPDATE_SETTINGS',
+            settings: settings
+        });
         
         // Show confirmation
         const saveBtn = document.getElementById('saveSettingsBtn');

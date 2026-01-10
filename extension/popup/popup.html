@@ -3,14 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phish Guard</title>
+    <title>Cyber Kavach</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
     <div class="container">
-        <!-- Header with Tabs -->
+        <!-- Header with Logo -->
         <div class="header">
-            <h1>🛡️ Phish Guard</h1>
+            <h1>
+                <img src="../icons/company_logo.png" class="company-logo" alt="Cyber Kavach Logo">
+                Cyber Kavach
+            </h1>
             <div class="status-indicator">
                 <span class="status-dot" id="statusDot"></span>
                 <span id="statusText">Idle</span>
@@ -19,16 +22,26 @@
         
         <!-- Tab Navigation -->
         <div class="tabs">
-            <button class="tab-btn active" data-tab="main">🔍 Scan</button>
-            <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
-            <button class="tab-btn" data-tab="help">❓ Help</button>
+            <button class="tab-btn active" data-tab="main">
+                <img src="../icons/company_logo.png" class="logo-small" alt="">
+                Scan
+            </button>
+            <button class="tab-btn" data-tab="settings">
+                ⚙️ Settings
+            </button>
+            <button class="tab-btn" data-tab="help">
+                ❓ Help
+            </button>
         </div>
 
         <!-- Main Tab Content -->
         <div class="tab-content active" id="main-tab">
             <!-- Current Site Info -->
             <div class="card">
-                <h3>Current Website</h3>
+                <h3>
+                    <img src="../icons/company_logo.png" class="logo-small" alt="">
+                    Current Website
+                </h3>
                 <div class="url-display" id="currentUrl">Loading...</div>
                 
                 <!-- Risk Score -->
@@ -92,7 +105,10 @@
         <!-- Settings Tab Content -->
         <div class="tab-content" id="settings-tab">
             <div class="card">
-                <h3>⚙️ Settings</h3>
+                <h3>
+                    <img src="../icons/company_logo.png" class="logo-small" alt="">
+                    Settings
+                </h3>
                 
                 <!-- Protection Settings -->
                 <div class="settings-group">
@@ -176,13 +192,19 @@
         <!-- Help Tab Content -->
         <div class="tab-content" id="help-tab">
             <div class="card">
-                <h3>❓ Help & Information</h3>
+                <h3>
+                    <img src="../icons/company_logo.png" class="logo-small" alt="">
+                    Help & Information
+                </h3>
                 
                 <!-- Quick Guide -->
                 <div class="help-section">
-                    <h4>🚀 Quick Start Guide</h4>
+                    <h4>
+                        <img src="../icons/company_logo.png" class="logo-small" alt="">
+                        Quick Start Guide
+                    </h4>
                     <ol class="help-list">
-                        <li><strong>Click the Phish Guard icon</strong> to open this popup</li>
+                        <li><strong>Click the Cyber Kavach icon</strong> to open this popup</li>
                         <li><strong>View the risk score</strong> for the current website</li>
                         <li><strong>Click "🧠 Deep ML Scan"</strong> for detailed ML analysis</li>
                         <li><strong>Click "⚡ Quick Check"</strong> Basic pattern matching for fast safety check</li>
@@ -269,7 +291,7 @@
                 <div class="help-section">
                     <h4>❓ FAQ</h4>
                     <div class="faq-item">
-                        <div class="faq-question">Does Phish Guard collect personal data?</div>
+                        <div class="faq-question">Does Cyber Kavach collect personal data?</div>
                         <div class="faq-answer">No. Only URLs and website content are analyzed for phishing detection.</div>
                     </div>
                     <div class="faq-item">
@@ -283,6 +305,7 @@
                 </div>
             </div>
         </div>
+        
     </div>
 
     <script src="popup.js"></script>
