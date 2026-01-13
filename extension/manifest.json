@@ -39,9 +39,13 @@
     }
   ],
   
- "web_accessible_resources": [
+"web_accessible_resources": [
   {
-    "resources": ["icons/company_logo.png", "popup/*"],
+    "resources": [
+      "icons/company_logo.png", 
+      "popup/*",
+      "blocked_screen.js"
+    ],
     "matches": ["<all_urls>"]
   }
 ],

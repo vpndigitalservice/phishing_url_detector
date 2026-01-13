@@ -5,15 +5,32 @@ console.log("🚀 Cyber Kavach Background loaded!");
 let isAutoScanEnabled = true;
 let protectionLevel = 'medium';
 
+
 // Load settings on startup
-chrome.storage.local.get(['settings'], (result) => {
-    if (result.settings) {
-        isAutoScanEnabled = result.settings.autoScan !== false;
-        protectionLevel = result.settings.protectionLevel || 'medium';
-        console.log(`⚙️ Settings loaded: Auto-scan=${isAutoScanEnabled}, Level=${protectionLevel}`);
-    }
+chrome.storage.local.get(['autoScan', 'blockDangerous', 'protectionLevel'], (result) => {
+    isAutoScanEnabled = result.autoScan !== false;
+    const shouldAutoBlock = result.blockDangerous !== false;
+    protectionLevel = result.protectionLevel || 'medium';
+    
+    console.log(`⚙️ Settings loaded: Auto-scan=${isAutoScanEnabled}, Auto-block=${shouldAutoBlock}, Level=${protectionLevel}`);
 });
 
+// Also listen for individual setting changes
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local') {
+        if (changes.autoScan) {
+            isAutoScanEnabled = changes.autoScan.newValue !== false;
+            console.log(`⚙️ Auto-scan changed: ${isAutoScanEnabled}`);
+        }
+        if (changes.protectionLevel) {
+            protectionLevel = changes.protectionLevel.newValue || 'medium';
+            console.log(`⚙️ Protection level changed: ${protectionLevel}`);
+        }
+        if (changes.blockDangerous) {
+            console.log(`⚙️ Auto-block changed: ${changes.blockDangerous.newValue}`);
+        }
+    }
+});
 // ===== URL MONITORING =====
 // Listen for tab updates
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
@@ -73,6 +90,7 @@ async function updateBadge(score, tabId) {
 }
 
 // ===== URL ANALYSIS =====
+// ===== URL ANALYSIS =====
 async function analyzeUrl(url, tabId) {
     try {
         console.log(`🔍 Analyzing URL: ${url}`);
@@ -99,23 +117,46 @@ async function analyzeUrl(url, tabId) {
         if (blacklist.includes(hostname)) {
             console.log(`🚨 Blacklisted: ${hostname}`);
             await updateBadge(95, tabId);
-            await showBlockedPage(tabId, url, "blacklisted");
+            await showBlockedPage(tabId, url, "blacklisted", 95);
             return;
         }
         
-        // === PERFORM ANALYSIS ===
-        const analysis = performHeuristicAnalysis(url);
-        console.log(`📊 Analysis complete: ${hostname} = ${analysis.score}/100`);
+        // === PERFORM ML SCAN FIRST (if server available) ===
+        let finalScore = 50; // Default score
+        let warnings = [];
+        let mlAnalysis = null;
+        
+        try {
+            mlAnalysis = await performMLScan(url, tabId);
+            if (mlAnalysis) {
+                finalScore = mlAnalysis.risk_score || 50;
+                console.log(`✅ ML scan score: ${finalScore} for ${url}`);
+                
+                if (mlAnalysis.prediction === 'Phishing') {
+                    warnings.push(`🚨 ML: Phishing detected (${(mlAnalysis.confidence * 100).toFixed(1)}% confidence)`);
+                }
+            }
+        } catch (mlError) {
+            console.log('ML scan failed, using heuristic:', mlError);
+        }
+        
+        // === FALLBACK TO HEURISTIC IF ML FAILED ===
+        if (!mlAnalysis || finalScore === 50) {
+            const heuristicAnalysis = performHeuristicAnalysis(url);
+            finalScore = heuristicAnalysis.score;
+            warnings = heuristicAnalysis.warnings;
+            console.log(`📊 Heuristic score: ${finalScore} for ${url}`);
+        }
         
         // Update badge with score
-        await updateBadge(analysis.score, tabId);
+        await updateBadge(finalScore, tabId);
         
         // === CHECK SETTINGS ===
         const { settings = {} } = await chrome.storage.local.get('settings');
         const shouldAutoBlock = settings.blockDangerous !== false;
         
         // Adjust thresholds based on protection level
-        let autoBlockThreshold = 85;
+        let autoBlockThreshold = 80;
         let warningMin = 71;
         let warningMax = 84;
         
@@ -124,17 +165,18 @@ async function analyzeUrl(url, tabId) {
             warningMin = 81;
             warningMax = 94;
         } else if (protectionLevel === 'high') {
-            autoBlockThreshold = 75;
-            warningMin = 61;
-            warningMax = 74;
+            autoBlockThreshold = 70;
+            warningMin = 51;
+            warningMax = 69;
         }
         
-        console.log(`⚙️ Thresholds - Warning: ${warningMin}-${warningMax}, Auto-block: ≥${autoBlockThreshold}`);
+        console.log(`⚙️ Settings: Auto-scan=${isAutoScanEnabled}, Auto-block=${shouldAutoBlock}, Level=${protectionLevel}`);
+        console.log(`📊 Score: ${finalScore}, Thresholds - Warning: ${warningMin}-${warningMax}, Auto-block: ≥${autoBlockThreshold}`);
         
         // === DECISION LOGIC ===
-        if (shouldAutoBlock && analysis.score >= autoBlockThreshold) {
+        if (shouldAutoBlock && finalScore >= autoBlockThreshold) {
             // SCENARIO 1: AUTO-BLOCK (score ≥ autoBlockThreshold)
-            console.log(`🚨 AUTO-BLOCKING: ${url} (Score: ${analysis.score})`);
+            console.log(`🚨 AUTO-BLOCKING: ${url} (Score: ${finalScore})`);
             
             // Add to blacklist
             if (!blacklist.includes(hostname)) {
@@ -149,28 +191,32 @@ async function analyzeUrl(url, tabId) {
             }
             
             await updateBadge(95, tabId);
-            await showBlockedPage(tabId, url, "auto_blocked");
+            await showBlockedPage(tabId, url, "auto_blocked", finalScore);
             return;
             
-        } else if (analysis.score >= warningMin && analysis.score <= warningMax) {
-            // SCENARIO 2: WARNING BANNER (score in warning range)
-            console.log(`⚠️ High risk detected (${analysis.score}/100), showing warning banner`);
-            await showWarningBanner(tabId, url, analysis.score);
+        } else if (finalScore >= warningMin && finalScore <= warningMax) {
+            // SCENARIO 2: WARNING SCREEN (score in warning range)
+            console.log(`⚠️ High risk detected (${finalScore}/100), showing warning screen`);
+            await showWarningBanner(tabId, url, finalScore);
             
-        } else if (analysis.score >= autoBlockThreshold) {
-            // SCENARIO 3: HIGH SCORE BUT AUTO-BLOCK DISABLED (score ≥ autoBlockThreshold but shouldAutoBlock is false)
-            console.log(`⚠️ Very high risk detected (${analysis.score}/100) but auto-block is disabled`);
-            // Still show warning banner for very high scores even if auto-block is off
-            await showWarningBanner(tabId, url, analysis.score);
+        } else if (finalScore >= autoBlockThreshold) {
+            // SCENARIO 3: HIGH SCORE BUT AUTO-BLOCK DISABLED
+            console.log(`⚠️ Very high risk detected (${finalScore}/100) but auto-block is disabled`);
+            await showWarningBanner(tabId, url, finalScore);
         }
-        // SCENARIO 4: SAFE/MODERATE (score < warningMin) - no action needed
         
         // Store analysis for popup
         const urlKey = `analysis_${url}`;
-        await chrome.storage.local.set({ [urlKey]: analysis });
+        await chrome.storage.local.set({ 
+            [urlKey]: {
+                score: finalScore,
+                warnings: warnings,
+                timestamp: Date.now()
+            }
+        });
         
         // Send to popup if open
-        sendToPopup(analysis, url);
+        sendToPopup({ score: finalScore, warnings: warnings }, url);
         
     } catch (error) {
         console.error('❌ Error analyzing URL:', error);
@@ -336,142 +382,147 @@ function performHeuristicAnalysis(url) {
         factors: factors
     };
 }
-// ===== SIMPLE WARNING BANNER (for scores > 70) =====
 // ===== RELIABLE WARNING BANNER =====
+ // ===== WARNING SCREEN (Yellow for suspicious sites) =====
 async function showWarningBanner(tabId, url, score) {
-    console.log(`🎯 Showing warning banner for ${url} (score: ${score})`);
+    console.log(`⚠️ Showing warning screen for ${url} (score: ${score})`);
     
     try {
         // Small delay to ensure page is loaded
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Try to inject the banner
+        // Inject the blocked screen script first
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['blocked_screen.js']
+        });
+        
+        // Call the injection function with score
         await chrome.scripting.executeScript({
             target: { tabId },
             func: (url, score) => {
-                // Only inject if page is loaded and not already blocked
-                if (document.readyState !== 'complete' || 
-                    document.body.innerHTML.includes('BLOCKED BY CYBER KAVACH')) {
-                    console.log('Page not ready or already blocked');
-                    return;
+                if (window.injectRedScreen) {
+                    window.injectRedScreen(url, 'suspicious', score);
                 }
-                
-                // Remove existing banner if any
-                const oldBanner = document.querySelector('.cyber-kavach-warning');
-                if (oldBanner) oldBanner.remove();
-                
-                // Create banner
-                const banner = document.createElement('div');
-                banner.className = 'cyber-kavach-warning';
-                banner.innerHTML = `
-                    <div style="
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-                        color: white;
-                        padding: 12px 20px;
-                        z-index: 999999;
-                        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                        text-align: center;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                        display: flex;
-                        justify-content: space-between;
-                        align-items: center;
-                    ">
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="font-size: 20px;">⚠️</span>
-                            <div>
-                                <div style="font-weight: bold; font-size: 14px;">SECURITY WARNING</div>
-                                <div style="font-size: 12px; opacity: 0.9;">
-                                    Risk Score: ${score}/100 - Exercise caution
-                                </div>
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button id="dismissBtn" style="
-                                padding: 6px 12px;
-                                background: rgba(255,255,255,0.2);
-                                color: white;
-                                border: 1px solid rgba(255,255,255,0.3);
-                                border-radius: 4px;
-                                font-size: 12px;
-                                cursor: pointer;
-                            ">
-                                Dismiss
-                            </button>
-                            <button id="reportBtn" style="
-                                padding: 6px 12px;
-                                background: white;
-                                color: #dc2626;
-                                border: none;
-                                border-radius: 4px;
-                                font-weight: bold;
-                                font-size: 12px;
-                                cursor: pointer;
-                            ">
-                                Report
-                            </button>
-                        </div>
-                    </div>
-                    <style>
-                        .cyber-kavach-warning {
-                            animation: slideDown 0.3s ease;
-                        }
-                        @keyframes slideDown {
-                            from { transform: translateY(-100%); }
-                            to { transform: translateY(0); }
-                        }
-                        body { padding-top: 56px !important; }
-                    </style>
-                `;
-                
-                // Add to page
-                document.body.appendChild(banner);
-                
-                // Add margin to body
-                document.body.style.paddingTop = '56px';
-                
-                // Event listeners
-                document.getElementById('dismissBtn').addEventListener('click', () => {
-                    banner.remove();
-                    document.body.style.paddingTop = '';
-                });
-                
-                document.getElementById('reportBtn').addEventListener('click', () => {
-                    chrome.runtime.sendMessage({
-                        type: 'REPORT_SITE',
-                        url: url
-                    });
-                    
-                    const btn = document.getElementById('reportBtn');
-                    btn.textContent = 'Reported!';
-                    btn.disabled = true;
-                    btn.style.background = '#4ade80';
-                    btn.style.color = 'white';
-                    
-                    setTimeout(() => {
-                        banner.remove();
-                        document.body.style.paddingTop = '';
-                    }, 1500);
-                });
-                
             },
             args: [url, score]
         });
         
-        console.log(`✅ Warning banner shown for ${url}`);
+        console.log(`✅ Warning screen shown for ${url}`);
         
     } catch (error) {
-        console.log(`⚠️ Could not show banner for ${url}: ${error.message}`);
-        // Don't throw error, just log it
+        console.log(`⚠️ Could not show warning screen for ${url}: ${error.message}`);
+        // Fallback to simple banner
+        await showSimpleWarningBanner(tabId, url, score);
     }
 }
-// ===== SIMPLE BLOCKED PAGE =====
+
+// Simple banner fallback
+async function showSimpleWarningBanner(tabId, url, score) {
+    await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (url, score) => {
+            // Remove existing banner
+            const oldBanner = document.querySelector('.cyber-kavach-warning');
+            if (oldBanner) oldBanner.remove();
+            
+            // Create simple banner
+            const banner = document.createElement('div');
+            banner.className = 'cyber-kavach-warning';
+            banner.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                    color: #451a03;
+                    padding: 12px 20px;
+                    z-index: 999999;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    text-align: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                ">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 20px;">⚠️</span>
+                        <div>
+                            <div style="font-weight: bold; font-size: 14px;">SECURITY WARNING</div>
+                            <div style="font-size: 12px; opacity: 0.9;">
+                                Risk Score: ${score}/100 - Exercise caution
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="dismissBtn" style="
+                            padding: 6px 12px;
+                            background: rgba(255,255,255,0.2);
+                            color: #451a03;
+                            border: 1px solid rgba(161, 98, 7, 0.3);
+                            border-radius: 4px;
+                            font-size: 12px;
+                            cursor: pointer;
+                        ">
+                            Dismiss
+                        </button>
+                        <button id="reportBtn" style="
+                            padding: 6px 12px;
+                            background: #451a03;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            font-weight: bold;
+                            font-size: 12px;
+                            cursor: pointer;
+                        ">
+                            Report
+                        </button>
+                    </div>
+                </div>
+                <style>
+                    .cyber-kavach-warning {
+                        animation: slideDown 0.3s ease;
+                    }
+                    @keyframes slideDown {
+                        from { transform: translateY(-100%); }
+                        to { transform: translateY(0); }
+                    }
+                    body { padding-top: 56px !important; }
+                </style>
+            `;
+            
+            document.body.appendChild(banner);
+            document.body.style.paddingTop = '56px';
+            
+            // Event listeners
+            document.getElementById('dismissBtn').addEventListener('click', () => {
+                banner.remove();
+                document.body.style.paddingTop = '';
+            });
+            
+            document.getElementById('reportBtn').addEventListener('click', () => {
+                chrome.runtime.sendMessage({
+                    type: 'REPORT_SITE',
+                    url: url
+                });
+                
+                const btn = document.getElementById('reportBtn');
+                btn.textContent = 'Reported!';
+                btn.disabled = true;
+                btn.style.background = '#4ade80';
+                btn.style.color = 'white';
+            });
+        },
+        args: [url, score]
+    });
+}
+
 // ===== ROBUST BLOCKED PAGE =====
-async function showBlockedPage(tabId, url, reason) {
-    console.log(`🛑 Attempting to show blocked page for ${url}, reason: ${reason}, tabId: ${tabId}`);
+// ===== RED SCREEN BLOCKING =====
+async function showBlockedPage(tabId, url, reason, riskScore = null) {
+    console.log(`🛑 Showing red screen for ${url}, reason: ${reason}, riskScore: ${riskScore}`);
     
     try {
         // Verify the tab still exists
@@ -481,121 +532,355 @@ async function showBlockedPage(tabId, url, reason) {
             console.log(`✅ Tab ${tabId} exists, status: ${tab.status}, url: ${tab.url}`);
         } catch (tabError) {
             console.log(`⚠️ Tab ${tabId} no longer exists or cannot be accessed`);
-            return; // Don't try to block if tab doesn't exist
-        }
-        
-        // Check if tab is already showing our blocked page
-        if (tab.url && tab.url.includes('data:text/html')) {
-            console.log('ℹ️ Tab already showing blocked page');
             return;
         }
         
-        // Create a simple blocked page
-        const blockedHTML = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Blocked by Cyber Kavach</title>
-                <style>
-                    body {
-                        margin: 0;
-                        padding: 40px 20px;
-                        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-                        color: white;
-                        min-height: 100vh;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        text-align: center;
-                    }
-                    .container {
-                        max-width: 600px;
-                        background: rgba(30, 41, 59, 0.9);
-                        padding: 40px;
-                        border-radius: 20px;
-                        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-                        border: 1px solid rgba(239, 68, 68, 0.3);
-                    }
-                    h1 {
-                        color: #f87171;
-                        margin-bottom: 20px;
-                    }
-                    .url-box {
-                        background: rgba(0,0,0,0.3);
-                        padding: 15px;
-                        border-radius: 8px;
-                        margin: 20px 0;
-                        font-family: monospace;
-                        word-break: break-all;
-                    }
-                    button {
-                        padding: 12px 24px;
-                        margin: 10px;
-                        border: none;
-                        border-radius: 8px;
-                        font-weight: bold;
-                        cursor: pointer;
-                        font-size: 16px;
-                    }
-                    #goBack {
-                        background: #4ade80;
-                        color: white;
-                    }
-                    #proceed {
-                        background: transparent;
-                        color: #f87171;
-                        border: 2px solid #f87171;
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>🛑 BLOCKED BY CYBER KAVACH</h1>
-                    <p>${reason === 'blacklisted' 
-                        ? 'This website has been blocked for security reasons.' 
-                        : 'Our security system detected dangerous patterns on this site.'}</p>
-                    
-                    <div class="url-box">${url}</div>
-                    
-                    <p>⚠️ This site may attempt to steal your personal information.</p>
-                    
-                    <div>
-                        <button id="goBack">← Go Back</button>
-                        <button id="proceed">Proceed Anyway</button>
-                    </div>
-                </div>
+        // First inject the CSS styles
+        await chrome.scripting.insertCSS({
+            target: { tabId },
+            css: `
+                .red-screen-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+                    z-index: 99999999;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    text-align: center;
+                    padding: 40px 20px;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    overflow-y: auto;
+                }
                 
-                <script>
-                    document.getElementById('goBack').addEventListener('click', () => {
-                        if (window.history.length > 1) {
-                            window.history.back();
-                        } else {
-                            window.close();
-                        }
-                    });
-                    
-                    document.getElementById('proceed').addEventListener('click', () => {
-                        if (confirm('⚠️ SECURITY WARNING\\n\\nThis site has been blocked for security reasons.\\nProceeding may put your information at risk.\\n\\nProceed anyway?')) {
-                            window.location.href = '${url}';
-                        }
-                    });
-                </script>
-            </body>
-            </html>
-        `;
+                .yellow-screen-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100vw;
+                    height: 100vh;
+                    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                    z-index: 99999999;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    color: #451a03;
+                    text-align: center;
+                    padding: 40px 20px;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    overflow-y: auto;
+                }
+                
+                .red-screen-content, .yellow-screen-content {
+                    max-width: 600px;
+                    width: 90%;
+                    background: rgba(0, 0, 0, 0.3);
+                    padding: 40px;
+                    border-radius: 20px;
+                    border: 3px solid rgba(255, 255, 255, 0.2);
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+                }
+                
+                .yellow-screen-content {
+                    background: rgba(255, 255, 255, 0.9);
+                    border: 3px solid rgba(161, 98, 7, 0.3);
+                }
+                
+                .red-screen-title {
+                    font-size: 36px;
+                    font-weight: 900;
+                    margin-bottom: 20px;
+                    text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                }
+                
+                .yellow-screen-title {
+                    font-size: 32px;
+                    font-weight: 900;
+                    margin-bottom: 20px;
+                    color: #78350f;
+                }
+                
+                .red-screen-subtitle, .yellow-screen-subtitle {
+                    font-size: 18px;
+                    margin-bottom: 25px;
+                    opacity: 0.9;
+                }
+                
+                .red-screen-url {
+                    background: rgba(0,0,0,0.5);
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    font-family: monospace;
+                    word-break: break-all;
+                    border-left: 4px solid #ef4444;
+                }
+                
+                .red-screen-reason {
+                    background: rgba(239, 68, 68, 0.2);
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    font-size: 16px;
+                    border: 2px solid rgba(239, 68, 68, 0.4);
+                }
+                
+                .red-screen-warning {
+                    background: rgba(255, 255, 255, 0.1);
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    border-left: 5px solid #fbbf24;
+                    text-align: left;
+                }
+                
+                .red-screen-buttons {
+                    display: flex;
+                    gap: 15px;
+                    margin-top: 30px;
+                    flex-wrap: wrap;
+                    justify-content: center;
+                }
+                
+                .red-screen-btn {
+                    padding: 16px 32px;
+                    border: none;
+                    border-radius: 10px;
+                    font-weight: 700;
+                    font-size: 16px;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    min-width: 180px;
+                }
+                
+                .red-screen-btn:hover {
+                    transform: translateY(-3px);
+                    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+                }
+                
+                .red-screen-btn-primary {
+                    background: white;
+                    color: #dc2626;
+                }
+                
+                .red-screen-btn-danger {
+                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                    color: white;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                }
+                
+                .red-screen-btn-warning {
+                    background: #f59e0b;
+                    color: #451a03;
+                }
+                
+                .red-screen-btn-secondary {
+                    background: rgba(255, 255, 255, 0.1);
+                    color: white;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                }
+                
+                .yellow-screen-risk-score {
+                    font-size: 72px;
+                    font-weight: 900;
+                    color: #dc2626;
+                    margin: 20px 0;
+                }
+                
+                .yellow-screen-risk-label {
+                    font-size: 24px;
+                    font-weight: 700;
+                    margin-bottom: 30px;
+                    color: #b45309;
+                }
+                
+                @keyframes shake {
+                    0%, 100% { transform: translateX(0); }
+                    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+                    20%, 40%, 60%, 80% { transform: translateX(5px); }
+                }
+                
+                @keyframes flashRed {
+                    0%, 100% { background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); }
+                    50% { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+                }
+                
+                .shake-warning {
+                    animation: shake 0.5s ease-in-out;
+                }
+                
+                .flash-danger {
+                    animation: flashRed 0.8s ease-in-out;
+                }
+            `
+        });
         
-        // Convert to data URL
-        const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(blockedHTML)}`;
+        // Then inject the blocked screen script
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['blocked_screen.js']
+        });
         
-        // Update the tab
-        await chrome.tabs.update(tabId, { url: dataUrl });
+        // Call the injection function
+        await chrome.scripting.executeScript({
+            target: { tabId },
+            func: (url, reason, riskScore) => {
+                if (window.injectRedScreen) {
+                    window.injectRedScreen(url, reason, riskScore);
+                } else {
+                    console.error('injectRedScreen not available');
+                    // Fallback
+                    document.body.innerHTML = `
+                        <div style="
+                            position: fixed;
+                            top: 0; left: 0; right: 0; bottom: 0;
+                            background: #dc2626;
+                            color: white;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-family: sans-serif;
+                            text-align: center;
+                            padding: 20px;
+                        ">
+                            <div>
+                                <h1 style="font-size: 36px;">🚨 BLOCKED BY CYBER KAVACH</h1>
+                                <p>${url} has been blocked for security reasons.</p>
+                                <button onclick="history.back()" style="
+                                    padding: 12px 24px;
+                                    background: white;
+                                    color: #dc2626;
+                                    border: none;
+                                    border-radius: 8px;
+                                    font-weight: bold;
+                                    cursor: pointer;
+                                    margin-top: 20px;
+                                ">
+                                    Go Back
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+            },
+            args: [url, reason, riskScore]
+        });
         
-        console.log(`✅ Blocked page shown for ${url}`);
+        console.log(`✅ Red screen injected for ${url}`);
         
     } catch (error) {
-        console.error('❌ Error showing blocked page:', error);
+        console.error('❌ Error showing red screen:', error);
+        
+        // Fallback to simple blocked page
+        await showSimpleBlockedPage(tabId, url, reason);
     }
+}
+
+// Fallback function for when injection fails
+async function showSimpleBlockedPage(tabId, url, reason) {
+    const blockedHTML = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Blocked by Cyber Kavach</title>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 40px 20px;
+                    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+                    color: white;
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-align: center;
+                }
+                .container {
+                    max-width: 600px;
+                    background: rgba(0, 0, 0, 0.3);
+                    padding: 40px;
+                    border-radius: 20px;
+                    border: 3px solid rgba(255, 255, 255, 0.2);
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+                }
+                h1 {
+                    color: #fecaca;
+                    margin-bottom: 20px;
+                    font-size: 36px;
+                }
+                .url-box {
+                    background: rgba(0,0,0,0.5);
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    font-family: monospace;
+                    word-break: break-all;
+                }
+                button {
+                    padding: 12px 24px;
+                    margin: 10px;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    font-size: 16px;
+                }
+                #goBack {
+                    background: #4ade80;
+                    color: white;
+                }
+                #proceed {
+                    background: transparent;
+                    color: #f87171;
+                    border: 2px solid #f87171;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🚨 BLOCKED BY CYBER KAVACH</h1>
+                <p>${reason === 'blacklisted' 
+                    ? 'This website has been blocked for security reasons.' 
+                    : 'Our security system detected dangerous patterns on this site.'}</p>
+                
+                <div class="url-box">${url}</div>
+                
+                <p>⚠️ This site may attempt to steal your personal information.</p>
+                
+                <div>
+                    <button id="goBack">← Go Back to Safety</button>
+                    <button id="proceed">⚠️ Proceed Anyway (Risky)</button>
+                </div>
+            </div>
+            
+            <script>
+                document.getElementById('goBack').addEventListener('click', () => {
+                    if (window.history.length > 1) {
+                        window.history.back();
+                    } else {
+                        window.location.href = 'https://www.google.com';
+                    }
+                });
+                
+                document.getElementById('proceed').addEventListener('click', () => {
+                    if (confirm('⚠️ SECURITY WARNING\\n\\nThis site has been blocked for security reasons.\\nProceeding may put your information at risk.\\n\\nProceed anyway?')) {
+                        window.location.href = '${url}';
+                    }
+                });
+            </script>
+        </body>
+        </html>
+    `;
+    
+    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(blockedHTML)}`;
+    await chrome.tabs.update(tabId, { url: dataUrl });
 }
 // ===== MESSAGE HANDLING =====
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -626,6 +911,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // Keep the message channel open for async response
     }
     
+    
+    
+    if (message.type === 'HIGH_RISK_DETECTED') {
+        console.log(`🚨 High risk detected from ML scan: ${message.url} (${message.score}/100)`);
+        
+        // Check settings for auto-block
+        chrome.storage.local.get(['settings'], async (result) => {
+            const shouldAutoBlock = result.settings?.blockDangerous !== false;
+            
+            if (shouldAutoBlock && message.score >= 80) {
+                console.log(`🛑 Auto-blocking high risk site: ${message.url}`);
+                
+                const urlObj = new URL(message.url);
+                const hostname = urlObj.hostname;
+                
+                // Add to blacklist
+                const { blacklist = [] } = await chrome.storage.local.get('blacklist');
+                if (!blacklist.includes(hostname)) {
+                    blacklist.push(hostname);
+                    await chrome.storage.local.set({ blacklist: blacklist });
+                    
+                    // Update blocked count
+                    const { blockedCount = 0 } = await chrome.storage.local.get('blockedCount');
+                    await chrome.storage.local.set({ blockedCount: blockedCount + 1 });
+                }
+                
+                // Show red screen
+                if (sender?.tab?.id) {
+                    await showBlockedPage(sender.tab.id, message.url, "ml_high_risk", message.score);
+                }
+            }
+        });
+        
+        sendResponse({ success: true });
+        return true;
+    }
+    
     if (message.type === 'UPDATE_SETTINGS') {
         if (message.settings) {
             isAutoScanEnabled = message.settings.autoScan !== false;
@@ -636,6 +958,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     return true;
+
 });
 
 // ===== FIXED REPORT HANDLING =====
@@ -650,10 +973,10 @@ async function handleReportSite(url, tabId) {
         
         // Get current blacklist
         const data = await chrome.storage.local.get(['blacklist', 'blockedCount']);
-        const blacklist = data.blacklist || [];
-        const blockedCount = data.blockedCount || 0;
+        let blacklist = data.blacklist || [];
+        let blockedCount = data.blockedCount || 0;
         
-        console.log(`📋 Current blacklist:`, blacklist);
+        console.log(`📋 Current blacklist length:`, blacklist.length);
         
         // Add to blacklist if not already there
         if (!blacklist.includes(hostname)) {
@@ -664,20 +987,20 @@ async function handleReportSite(url, tabId) {
             });
             
             console.log(`✅ Added to blacklist: ${hostname}`);
-            console.log(`📊 New blacklist:`, blacklist);
+            console.log(`📊 New blacklist length:`, blacklist.length);
             
-            // If user is currently on this page, block it immediately
+            // Update badge to show it's blocked
             if (tabId) {
-                console.log(`🛑 Blocking current tab ${tabId} immediately`);
                 try {
-                    await updateBadge(95, tabId);
-                    await showBlockedPage(tabId, url, "blacklisted");
-                } catch (blockError) {
-                    console.error('Error blocking tab:', blockError);
+                    await chrome.action.setBadgeBackgroundColor({ color: '#ef4444', tabId });
+                    await chrome.action.setBadgeText({ text: '!', tabId });
+                    console.log(`✅ Updated badge for tab ${tabId}`);
+                } catch (badgeError) {
+                    console.log('Could not update badge:', badgeError);
                 }
             }
             
-            // Notify popup
+            // Send confirmation to popup if open
             try {
                 await chrome.runtime.sendMessage({
                     type: 'REPORT_CONFIRMED',
@@ -689,13 +1012,16 @@ async function handleReportSite(url, tabId) {
                 console.log('Popup not open, cannot send confirmation');
             }
             
+            return { success: true, hostname: hostname };
+            
         } else {
             console.log(`ℹ️ ${hostname} is already in blacklist`);
+            return { success: true, alreadyReported: true };
         }
         
     } catch (error) {
         console.error('❌ Error reporting site:', error);
-        throw error;
+        return { success: false, error: error.message };
     }
 }
 
@@ -712,30 +1038,6 @@ async function sendToPopup(analysis, url) {
     }
 }
 
-// ===== INITIALIZE =====
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.storage.local.set({
-        whitelist: ['google.com', 'github.com', 'stackoverflow.com'],
-        blacklist: [
-            'test-phishing-site.xyz',
-            'login-facebook-secure.bid',
-            'update-paypal-account.info'
-        ],
-        scannedCount: 0,
-        blockedCount: 0,
-        settings: {
-            protectionLevel: 'medium',
-            autoScan: true,
-            blockDangerous: true,
-            showWarnings: true,
-            soundAlerts: false,
-            shareReports: false
-        }
-    });
-    
-    console.log('✅ Cyber Kavach installed with default settings and test blacklist entries');
-});
-
 // Listen for storage changes
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings) {
@@ -750,3 +1052,103 @@ chrome.storage.onChanged.addListener((changes, area) => {
 chrome.runtime.onStartup.addListener(() => {
     console.log('🔄 Cyber Kavach background script started');
 });
+
+// ===== AUTOMATIC ML SCANNING =====
+async function performMLScan(url, tabId) {
+    console.log(`🧠 Performing automatic ML scan for: ${url}`);
+    
+    try {
+        // Skip if ML server not available
+        if (!await checkMLServer()) {
+            console.log('ML server not available, skipping ML scan');
+            return null;
+        }
+        
+        // Perform ML scan
+        const response = await fetch("http://127.0.0.1:5000/predict", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ url: url })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`ML server error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log(`✅ ML scan result for ${url}:`, data);
+        
+        // Update badge based on ML result
+        await updateBadge(data.risk_score || 50, tabId);
+        
+        // Store ML analysis
+        const analysis = {
+            score: data.risk_score || 50,
+            prediction: data.prediction || 'Unknown',
+            confidence: data.confidence || 0.5,
+            timestamp: Date.now(),
+            source: 'ml_auto'
+        };
+        
+        const urlKey = `ml_analysis_${url}`;
+        await chrome.storage.local.set({ [urlKey]: analysis });
+        
+        // Take action based on ML result
+        await handleMLResult(data, url, tabId);
+        
+        return data;
+        
+    } catch (error) {
+        console.error('❌ ML scan failed:', error);
+        return null;
+    }
+}
+
+// Check if ML server is running
+async function checkMLServer() {
+    try {
+        const response = await fetch("http://127.0.0.1:5000/health", { timeout: 3000 });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+// Handle ML scan results
+async function handleMLResult(data, url, tabId) {
+    const { settings = {} } = await chrome.storage.local.get('settings');
+    const shouldAutoBlock = settings.blockDangerous !== false;
+    
+    // Check if ML says it's phishing
+    if (data.prediction === 'Phishing' && data.confidence > 0.7) {
+        const riskScore = data.risk_score || 80;
+        
+        if (shouldAutoBlock && riskScore >= 80) {
+            console.log(`🚨 ML detected phishing with high confidence, blocking: ${url}`);
+            
+            // Add to blacklist
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname;
+            
+            const { blacklist = [] } = await chrome.storage.local.get('blacklist');
+            if (!blacklist.includes(hostname)) {
+                blacklist.push(hostname);
+                await chrome.storage.local.set({ blacklist: blacklist });
+                
+                // Update blocked count
+                const { blockedCount = 0 } = await chrome.storage.local.get('blockedCount');
+                await chrome.storage.local.set({ blockedCount: blockedCount + 1 });
+            }
+            
+            // Show blocked page
+           await showBlockedPage(tabId, url, "ml_phishing_detected", riskScore);
+            
+        }  else if (riskScore >= 60 && riskScore < 80) {  // Only show if score 60-79
+            console.log(`⚠️ ML detected potential phishing, showing warning: ${url}`);
+            await showWarningBanner(tabId, url, riskScore);
+        }
+    }
+}
+

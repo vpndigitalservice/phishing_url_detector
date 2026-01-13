@@ -705,3 +705,288 @@ body {
 
 .btn-safe { animation-delay: 0.5s; }
 .btn-danger { animation-delay: 0.6s; }
+
+/* ===== RED BLOCKED SCREEN ===== */
+.red-screen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    z-index: 99999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    text-align: center;
+    padding: 40px 20px;
+    animation: fadeInRed 0.5s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    overflow-y: auto;
+}
+
+@keyframes fadeInRed {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.red-screen-content {
+    max-width: 600px;
+    width: 90%;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 40px;
+    border-radius: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: slideUp 0.7s ease-out;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(30px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.red-screen-logo {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 30px;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
+    animation: pulseLogo 2s infinite;
+}
+
+@keyframes pulseLogo {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.red-screen-title {
+    font-size: 36px;
+    font-weight: 900;
+    margin-bottom: 20px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    letter-spacing: 1px;
+}
+
+.red-screen-subtitle {
+    font-size: 20px;
+    margin-bottom: 30px;
+    opacity: 0.9;
+    font-weight: 500;
+}
+
+.red-screen-url {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 15px;
+    border-radius: 10px;
+    margin: 25px 0;
+    font-family: monospace;
+    word-break: break-all;
+    border-left: 4px solid #ef4444;
+    font-size: 14px;
+}
+
+.red-screen-reason {
+    background: rgba(239, 68, 68, 0.2);
+    padding: 15px;
+    border-radius: 10px;
+    margin: 20px 0;
+    font-size: 16px;
+    border: 2px solid rgba(239, 68, 68, 0.4);
+}
+
+.red-screen-buttons {
+    display: flex;
+    gap: 15px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.red-screen-btn {
+    padding: 16px 32px;
+    border: none;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.red-screen-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.red-screen-btn-primary {
+    background: white;
+    color: #dc2626;
+}
+
+.red-screen-btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.red-screen-btn-danger {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.red-screen-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin: 30px 0;
+}
+
+.red-screen-feature {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.red-screen-warning {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 10px;
+    margin: 20px 0;
+    border-left: 5px solid #fbbf24;
+    font-size: 14px;
+    text-align: left;
+}
+
+/* ===== RISK WARNING SCREEN (Yellow for suspicious) ===== */
+.yellow-screen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    z-index: 99999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #451a03;
+    text-align: center;
+    padding: 40px 20px;
+    animation: fadeInYellow 0.5s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    overflow-y: auto;
+}
+
+@keyframes fadeInYellow {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.yellow-screen-content {
+    max-width: 600px;
+    width: 90%;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 40px;
+    border-radius: 20px;
+    border: 3px solid rgba(161, 98, 7, 0.3);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.7s ease-out;
+}
+
+.yellow-screen-title {
+    font-size: 32px;
+    font-weight: 900;
+    margin-bottom: 20px;
+    color: #78350f;
+}
+
+.yellow-screen-subtitle {
+    font-size: 18px;
+    margin-bottom: 25px;
+    color: #92400e;
+    font-weight: 500;
+}
+
+.yellow-screen-risk-score {
+    font-size: 72px;
+    font-weight: 900;
+    color: #dc2626;
+    margin: 20px 0;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.yellow-screen-risk-label {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 30px;
+    color: #b45309;
+}
+
+.yellow-screen-btn-warning {
+    background: #f59e0b;
+    color: #451a03;
+    font-weight: 700;
+}
+
+.yellow-screen-btn-warning:hover {
+    background: #d97706;
+}
+
+/* ===== SITE BLOCKED ANIMATIONS ===== */
+.shake-warning {
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+.flash-danger {
+    animation: flashRed 0.8s ease-in-out;
+}
+
+@keyframes flashRed {
+    0%, 100% { background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); }
+    50% { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 600px) {
+    .red-screen-content,
+    .yellow-screen-content {
+        padding: 25px;
+        width: 95%;
+    }
+    
+    .red-screen-title {
+        font-size: 28px;
+    }
+    
+    .yellow-screen-title {
+        font-size: 26px;
+    }
+    
+    .yellow-screen-risk-score {
+        font-size: 56px;
+    }
+    
+    .red-screen-buttons {
+        flex-direction: column;
+    }
+    
+    .red-screen-btn {
+        width: 100%;
+    }
+}

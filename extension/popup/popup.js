@@ -1,4 +1,4 @@
-// ===== CLEAR DUAL-SCAN VERSION =====
+// ===== AUTO ML-SCANNING VERSION =====
 console.log("🚀 Cyber Kavach Popup loaded!");
 
 // DOM Elements
@@ -11,9 +11,8 @@ const warningsList = document.getElementById('warningsList');
 const scannedCount = document.getElementById('scannedCount');
 const blockedCount = document.getElementById('blockedCount');
 
-// Buttons - NEW NAMES!
-const quickScanBtn = document.getElementById('quickScanBtn');
-const deepScanBtn = document.getElementById('deepScanBtn');
+// Buttons
+const scanBtn = document.getElementById('scanBtn');
 const whitelistBtn = document.getElementById('whitelistBtn');
 const reportBtn = document.getElementById('reportBtn');
 
@@ -32,14 +31,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         // Check if elements exist
         console.log("🔍 Checking elements:");
-        console.log("- Quick Scan Button:", !!quickScanBtn);
-        console.log("- Deep Scan Button:", !!deepScanBtn);
+        console.log("- Scan Button:", !!scanBtn);
         console.log("- Current URL:", !!currentUrl);
         
         // Load stats
         await loadStats();
         
-        // Get current tab and auto-run quick scan
+        // Get current tab and auto-run ML scan
         await updateCurrentTab();
         
         // Setup all event listeners
@@ -55,11 +53,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         showError("Failed to initialize");
     }
 });
+
 // Listen for report confirmation from background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'REPORT_CONFIRMED') {
         console.log('✅ Report confirmed:', message.url);
-        // You could show a toast notification here if needed
     }
 });
 
@@ -85,9 +83,37 @@ async function updateCurrentTab() {
             currentUrl.textContent = url.length > 50 ? url.substring(0, 47) + '...' : url;
         }
         
-        // Auto-run quick scan when popup opens
+        // Auto-run ML scan when popup opens
         if (url && !url.startsWith('chrome://') && !url.startsWith('chrome-extension://')) {
-            await quickScan(url);
+            const analysis = await mlScan(url);  // <-- GET THE ANALYSIS RETURN VALUE
+            
+            // Check if high risk and notify background
+            if (analysis && analysis.score >= 80) {
+                console.log(`🚨 High risk detected (${analysis.score}/100), checking auto-block...`);
+                
+                try {
+                    // Check settings for auto-block
+                    const settings = await chrome.storage.local.get(['settings']);
+                    const shouldAutoBlock = settings.settings?.blockDangerous !== false;
+                    
+                    if (shouldAutoBlock && analysis.score >= 80) {
+                        console.log(`🛑 High risk + auto-block enabled, blocking: ${url}`);
+                        
+                        // Report/block the site
+                        await chrome.runtime.sendMessage({
+                            type: 'REPORT_SITE',
+                            url: url
+                        });
+                        
+                        // Show notification
+                        if (analysis.score >= 90) {
+                            alert(`🚨 EXTREME RISK DETECTED (${analysis.score}/100)\n\nThis website appears to be phishing/malicious.\n\nCyber Kavach has blocked this site.`);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking auto-block:', error);
+                }
+            }
         } else {
             showInfo("Chrome pages cannot be scanned");
         }
@@ -101,55 +127,25 @@ async function updateCurrentTab() {
     }
 }
 
-// ===== SCAN FUNCTIONS =====
-async function quickScan(url) {
-    console.log("⚡ Starting QUICK scan...");
+// ===== ML SCAN FUNCTION =====
+async function mlScan(url) {
+    console.log("🧠 Starting ML scan...");
     
-    if (quickScanBtn) {
-        quickScanBtn.innerHTML = '⏳ Scanning...';
-        quickScanBtn.disabled = true;
+    // Show scanning status
+    updateDisplay({
+        score: 0,
+        warnings: ["🔄 Connecting to ML server..."],
+        source: 'scanning'
+    });
+    
+    if (scanBtn) {
+        scanBtn.innerHTML = '⏳ Analyzing...';
+        scanBtn.disabled = true;
     }
+    
+    let analysis = null; // <-- DECLARE analysis HERE
     
     try {
-        // Perform quick analysis (local rules only)
-        const analysis = performQuickAnalysis(url);
-        lastAnalysis = analysis;
-        
-        // Update display
-        updateDisplay(analysis);
-        
-        console.log("✅ Quick scan complete:", analysis.score);
-        
-        // Update scan count
-        await updateScanCount();
-        
-    } catch (error) {
-        console.error("❌ Quick scan failed:", error);
-        showError("Quick scan failed");
-    } finally {
-        if (quickScanBtn) {
-            setTimeout(() => {
-                quickScanBtn.innerHTML = '⚡ Quick Check';
-                quickScanBtn.disabled = false;
-            }, 500);
-        }
-    }
-}
-
-async function deepScan(url) {
-    console.log("🧠 Starting DEEP ML scan...");
-    
-    if (deepScanBtn) {
-        deepScanBtn.innerHTML = '⏳ ML Analyzing...';
-        deepScanBtn.disabled = true;
-    }
-    
-    try {
-        // First show quick results immediately
-        const quickAnalysis = performQuickAnalysis(url);
-        updateDisplay(quickAnalysis);
-        
-        // Then try ML analysis
         console.log("🌐 Connecting to ML backend...");
         const response = await fetch("http://127.0.0.1:5000/predict", {
             method: "POST",
@@ -167,14 +163,15 @@ async function deepScan(url) {
         const data = await response.json();
         console.log("✅ ML Analysis result:", data);
         
-        // Create combined analysis
-        const mlAnalysis = {
-            score: data.risk_score || quickAnalysis.score,
+        // Create analysis object
+        analysis = {  // <-- ASSIGN TO analysis VARIABLE
+            score: data.risk_score || 0,
             warnings: [
                 data.prediction === "Phishing" 
                     ? "🚨 ML model detected phishing" 
                     : "✅ ML model says safe",
-                ...quickAnalysis.warnings
+                `Confidence: ${(data.confidence * 100).toFixed(1)}%`,
+                data.prediction || "Unknown"
             ],
             timestamp: Date.now(),
             source: 'ml',
@@ -182,35 +179,43 @@ async function deepScan(url) {
             mlData: data
         };
         
-        lastAnalysis = mlAnalysis;
-        updateDisplay(mlAnalysis);
+        // Add feature-based warnings
+        if (data.features) {
+            addFeatureWarnings(analysis, data.features);
+        }
         
-        console.log("✅ Deep ML scan complete");
+        lastAnalysis = analysis;
+        updateDisplay(analysis);
+        
+        console.log("✅ ML scan complete");
         
         // Update scan count
         await updateScanCount();
         
     } catch (error) {
-        console.error("❌ Deep scan failed:", error);
+        console.error("❌ ML scan failed:", error);
         
-        // Fallback to quick analysis
-        const fallbackAnalysis = performQuickAnalysis(url);
-        fallbackAnalysis.warnings.push("⚠️ ML scan failed, using local rules");
-        updateDisplay(fallbackAnalysis);
+        // Fallback to local analysis
+        analysis = performLocalAnalysis(url);  // <-- ASSIGN TO analysis HERE TOO
+        analysis.warnings.push("⚠️ ML scan failed, using local analysis");
+        updateDisplay(analysis);
         
     } finally {
-        if (deepScanBtn) {
+        if (scanBtn) {
             setTimeout(() => {
-                deepScanBtn.innerHTML = '🧠 Deep ML Scan';
-                deepScanBtn.disabled = false;
+                scanBtn.innerHTML = '🔍 Scan URL with ML';
+                scanBtn.disabled = false;
             }, 500);
         }
     }
+    
+    // Now analysis is guaranteed to be defined
+    return analysis; // <-- RETURN analysis AT THE END
 }
 
-// ===== ANALYSIS FUNCTIONS =====
-function performQuickAnalysis(url) {
-    console.log("📊 Performing quick analysis...");
+// ===== LOCAL ANALYSIS FALLBACK =====
+function performLocalAnalysis(url) {
+    console.log("📊 Performing local analysis...");
     
     let score = 0;
     let warnings = [];
@@ -221,20 +226,20 @@ function performQuickAnalysis(url) {
         
         // === SAFE INDICATORS ===
         if (urlObj.protocol === 'https:') {
-            score -= 25;
+            score -= 20;
         }
         
         // === DANGEROUS INDICATORS ===
         if (urlObj.protocol !== 'https:') {
             warnings.push('⚠️ Not using HTTPS');
-            score += 40;
+            score += 30;
         }
         
         // IP Address
         const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
         if (ipPattern.test(hostname)) {
             warnings.push('🚨 Uses IP address');
-            score += 70;
+            score += 40;
         }
         
         // Suspicious TLDs
@@ -242,14 +247,14 @@ function performQuickAnalysis(url) {
         const hasSuspiciousTLD = suspiciousTLDs.some(tld => hostname.endsWith(tld));
         if (hasSuspiciousTLD) {
             warnings.push('⚠️ Suspicious domain extension');
-            score += 35;
+            score += 25;
         }
         
         // Multiple dashes
         const dashCount = (hostname.match(/-/g) || []).length;
         if (dashCount >= 2) {
             warnings.push(`⚠️ ${dashCount} dashes in domain`);
-            score += dashCount * 12;
+            score += dashCount * 10;
         }
         
         // Brand impersonation
@@ -260,7 +265,7 @@ function performQuickAnalysis(url) {
         
         if (isBrandImpersonation) {
             warnings.push(`🚨 Possible brand impersonation`);
-            score += 60;
+            score += 50;
         }
         
         // Ensure score is between 0-100
@@ -268,15 +273,47 @@ function performQuickAnalysis(url) {
         
     } catch (error) {
         warnings.push('🚨 Invalid URL format');
-        score = 80;
+        score = 70;
     }
     
     return {
         score: score,
         warnings: warnings,
         timestamp: Date.now(),
-        source: 'quick'
+        source: 'local'
     };
+}
+
+// ===== FEATURE WARNINGS =====
+function addFeatureWarnings(analysis, features) {
+    const warnings = analysis.warnings || [];
+    
+    if (features.has_ipv4) {
+        warnings.push('🚨 Contains IP address');
+    }
+    
+    if (features.suspicious_tld) {
+        warnings.push('⚠️ Suspicious domain extension');
+    }
+    
+    if (features.phishing_keyword) {
+        warnings.push('⚠️ Contains phishing keywords');
+    }
+    
+    if (features.brand_in_path) {
+        warnings.push('⚠️ Brand name in URL path');
+    }
+    
+    if (features.has_at_symbol) {
+        warnings.push('🚨 Contains @ symbol');
+    }
+    
+    if (features.num_subdomains > 2) {
+        warnings.push(`⚠️ ${features.num_subdomains} subdomains`);
+    }
+    
+    analysis.warnings = warnings;
+    return analysis;
 }
 
 // ===== UI UPDATES =====
@@ -340,28 +377,16 @@ function showInfo(message) {
 function setupAllListeners() {
     console.log("🔘 Setting up all listeners...");
     
-    // Quick Scan Button
-    if (quickScanBtn) {
-        quickScanBtn.addEventListener('click', async () => {
-            console.log("⚡ Quick Check clicked");
+    // Scan Button
+    if (scanBtn) {
+        scanBtn.addEventListener('click', async () => {
+            console.log("🔍 Scan clicked");
             if (currentTab && currentTab.url) {
-                await quickScan(currentTab.url);
+                await mlScan(currentTab.url);
             }
         });
     } else {
-        console.error("❌ Quick Scan button not found!");
-    }
-    
-    // Deep Scan Button
-    if (deepScanBtn) {
-        deepScanBtn.addEventListener('click', async () => {
-            console.log("🧠 Deep ML Scan clicked");
-            if (currentTab && currentTab.url) {
-                await deepScan(currentTab.url);
-            }
-        });
-    } else {
-        console.error("❌ Deep Scan button not found!");
+        console.error("❌ Scan button not found!");
     }
     
     // Whitelist Button
@@ -395,71 +420,73 @@ function setupAllListeners() {
         });
     }
     
-    
     // Report Button
-// Report Button - DEBUG VERSION
-if (reportBtn) {
-    reportBtn.addEventListener('click', async () => {
-        if (!currentTab?.url) {
-            console.error('❌ No current tab URL');
-            return;
-        }
-        
-        console.log('📢 Report button clicked for:', currentTab.url);
-        
-        try {
-            // Send report to background script
-            const response = await chrome.runtime.sendMessage({
-                type: 'REPORT_SITE',
-                url: currentTab.url
-            });
-            
-            console.log('📨 Report response:', response);
-            
-            if (response && response.success) {
-                // Update blocked count
-                const stats = await chrome.storage.local.get(['blockedCount']);
-                const newCount = (stats.blockedCount || 0) + 1;
-                await chrome.storage.local.set({ blockedCount: newCount });
-                
-                if (blockedCount) {
-                    blockedCount.textContent = newCount;
-                }
-                
-                // Update UI to show reported status
-                reportBtn.innerHTML = '✅ Reported!';
-                reportBtn.classList.remove('btn-danger');
-                reportBtn.classList.add('btn-secondary');
-                reportBtn.disabled = true;
-                
-                // Re-analyze with blacklist consideration
-                if (lastAnalysis) {
-                    lastAnalysis.score = 95;
-                    lastAnalysis.warnings.push("🚨 Manually reported as phishing");
-                    updateDisplay(lastAnalysis);
-                }
-                
-                // Reset button after 3 seconds
-                setTimeout(() => {
-                    reportBtn.innerHTML = '⚠️ Report';
-                    reportBtn.classList.remove('btn-secondary');
-                    reportBtn.classList.add('btn-danger');
-                    reportBtn.disabled = false;
-                }, 3000);
-                
-            } else {
-                throw new Error('Report failed: ' + (response?.error || 'Unknown error'));
+    if (reportBtn) {
+        reportBtn.addEventListener('click', async () => {
+            if (!currentTab?.url) {
+                console.error('❌ No current tab URL');
+                return;
             }
             
-        } catch (error) {
-            console.error("❌ Report error:", error);
-            reportBtn.innerHTML = '❌ Failed';
-            setTimeout(() => {
-                reportBtn.innerHTML = '⚠️ Report';
-            }, 2000);
-        }
-    });
-}
+            console.log('📢 Report button clicked for:', currentTab.url);
+            
+            try {
+                // Direct storage update
+                const data = await chrome.storage.local.get(['blacklist', 'blockedCount']);
+                let blacklist = data.blacklist || [];
+                let blockedCount = data.blockedCount || 0;
+                
+                const urlObj = new URL(currentTab.url);
+                const hostname = urlObj.hostname;
+                
+                if (!blacklist.includes(hostname)) {
+                    blacklist.push(hostname);
+                    await chrome.storage.local.set({ 
+                        blacklist: blacklist,
+                        blockedCount: blockedCount + 1 
+                    });
+                    
+                    console.log('✅ Site reported successfully');
+                    
+                    // Update UI
+                    if (blockedCount) {
+                        blockedCount.textContent = blockedCount + 1;
+                    }
+                    
+                    // Update button
+                    reportBtn.innerHTML = '✅ Reported!';
+                    reportBtn.classList.remove('btn-danger');
+                    reportBtn.classList.add('btn-secondary');
+                    reportBtn.disabled = true;
+                    
+                    // Update risk display
+                    if (lastAnalysis) {
+                        lastAnalysis.score = 95;
+                        lastAnalysis.warnings.push("🚨 Manually reported as phishing");
+                        updateDisplay(lastAnalysis);
+                    }
+                    
+                    // Reset button after 3 seconds
+                    setTimeout(() => {
+                        reportBtn.innerHTML = '⚠️ Report';
+                        reportBtn.classList.remove('btn-secondary');
+                        reportBtn.classList.add('btn-danger');
+                        reportBtn.disabled = false;
+                    }, 3000);
+                    
+                } else {
+                    alert('This site is already in the blacklist!');
+                }
+                
+            } catch (error) {
+                console.error("❌ Report error:", error);
+                reportBtn.innerHTML = '❌ Failed';
+                setTimeout(() => {
+                    reportBtn.innerHTML = '⚠️ Report';
+                }, 2000);
+            }
+        });
+    }
     
     // Settings buttons
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
@@ -529,16 +556,19 @@ function setupTabs() {
 // ===== SETTINGS FUNCTIONS =====
 async function loadSettings() {
     try {
+        // Load settings
         const settings = await chrome.storage.local.get([
             'protectionLevel',
-            'autoScan',
+            'autoScan', 
             'blockDangerous',
             'showWarnings',
             'soundAlerts',
             'shareReports'
         ]);
         
-        // Apply saved settings to UI
+        console.log('📥 Loaded settings from storage:', settings);
+        
+        // Apply to UI
         const protectionLevel = document.getElementById('protectionLevel');
         const autoScan = document.getElementById('autoScan');
         const blockDangerous = document.getElementById('blockDangerous');
@@ -547,34 +577,44 @@ async function loadSettings() {
         const shareReports = document.getElementById('shareReports');
         
         if (protectionLevel) protectionLevel.value = settings.protectionLevel || 'medium';
-        if (autoScan) autoScan.checked = settings.autoScan !== false;
-        if (blockDangerous) blockDangerous.checked = settings.blockDangerous !== false;
-        if (showWarnings) showWarnings.checked = settings.showWarnings !== false;
+        if (autoScan) autoScan.checked = settings.autoScan || false;
+        if (blockDangerous) blockDangerous.checked = settings.blockDangerous || false;
+        if (showWarnings) showWarnings.checked = settings.showWarnings || false;
         if (soundAlerts) soundAlerts.checked = settings.soundAlerts || false;
         if (shareReports) shareReports.checked = settings.shareReports || false;
+        
+        console.log('📊 Applied to UI:', {
+            protectionLevel: protectionLevel?.value,
+            autoScan: autoScan?.checked,
+            blockDangerous: blockDangerous?.checked
+        });
         
     } catch (error) {
         console.error('❌ Error loading settings:', error);
     }
 }
 
-  // In your saveSettings function in popup.js, add this:
 async function saveSettings() {
     try {
+        // Get current settings values
         const settings = {
             protectionLevel: document.getElementById('protectionLevel')?.value || 'medium',
             autoScan: document.getElementById('autoScan')?.checked || false,
             blockDangerous: document.getElementById('blockDangerous')?.checked || false,
             showWarnings: document.getElementById('showWarnings')?.checked || false,
             soundAlerts: document.getElementById('soundAlerts')?.checked || false,
-            shareReports: document.getElementById('shareReports')?.checked || false,
-            lastUpdated: Date.now()
+            shareReports: document.getElementById('shareReports')?.checked || false
         };
         
-        await chrome.storage.local.set({ settings: settings });
-        console.log('💾 Settings saved:', settings);
+        console.log('💾 Saving settings:', settings);
         
-        // Notify background script about settings change
+        // Save ALL settings at once
+        await chrome.storage.local.set(settings);
+        
+        // Also save as a settings object for backward compatibility
+        await chrome.storage.local.set({ settings: settings });
+        
+        // Notify background script
         await chrome.runtime.sendMessage({
             type: 'UPDATE_SETTINGS',
             settings: settings
@@ -595,6 +635,7 @@ async function saveSettings() {
         
     } catch (error) {
         console.error('❌ Error saving settings:', error);
+        alert('Failed to save settings: ' + error.message);
     }
 }
 
@@ -627,6 +668,21 @@ function clearAllData() {
     }
 }
 
-// ===== INITIAL AUTO-SCAN =====
-// The popup automatically runs quick scan when opened
-// This happens in updateCurrentTab()
+// DEBUG: Test function to check current settings
+async function debugCurrentSettings() {
+    const all = await chrome.storage.local.get(null);
+    console.log('🔍 ALL STORED SETTINGS:', all);
+    
+    // Check specific settings
+    console.log('📊 Current settings:');
+    console.log('- autoScan:', all.autoScan);
+    console.log('- blockDangerous:', all.blockDangerous);
+    console.log('- protectionLevel:', all.protectionLevel);
+    console.log('- whitelist:', all.whitelist?.length || 0, 'sites');
+    console.log('- blacklist:', all.blacklist?.length || 0, 'sites');
+}
+
+// Call it when popup opens for debugging
+debugCurrentSettings();
+
+
