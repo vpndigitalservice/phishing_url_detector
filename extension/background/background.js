@@ -1,53 +1,166 @@
-// ===== AUTO-SCANNING SYSTEM =====
+// ===== SUBSCRIPTION-BASED AUTO-SCANNING SYSTEM =====
 console.log("🚀 Cyber Kavach Background loaded!");
 
-// Auto-scan settings
-let isAutoScanEnabled = true;
+// Subscription state
+let userSubscription = 'free';
+let userFeatures = {
+    autoScan: false,
+    autoBlock: false,
+    redScreen: false,
+    advancedSettings: false
+};
+let isAutoScanEnabled = false;
 let protectionLevel = 'medium';
 
+// ===== SESSION SYNCHRONIZATION =====
+async function synchronizeUserSession() {
+    try {
+        const data = await chrome.storage.local.get([
+            'userLoggedIn', 
+            'userSubscription',
+            'userFeatures'
+        ]);
+        
+        if (data.userLoggedIn) {
+            userSubscription = data.userSubscription || 'free';
+            userFeatures = data.userFeatures || {};
+            isAutoScanEnabled = userSubscription === 'paid' && userFeatures.autoScan;
+            
+            console.log(`🔄 Background synchronized: ${userSubscription}, Auto-scan: ${isAutoScanEnabled}`);
+        }
+    } catch (error) {
+        console.error('❌ Sync error:', error);
+    }
+}
 
-// Load settings on startup
-chrome.storage.local.get(['autoScan', 'blockDangerous', 'protectionLevel'], (result) => {
-    isAutoScanEnabled = result.autoScan !== false;
-    const shouldAutoBlock = result.blockDangerous !== false;
-    protectionLevel = result.protectionLevel || 'medium';
+// ===== INITIALIZATION =====
+async function initializeBackground() {
+    console.log("⚙️ Initializing background service...");
     
-    console.log(`⚙️ Settings loaded: Auto-scan=${isAutoScanEnabled}, Auto-block=${shouldAutoBlock}, Level=${protectionLevel}`);
-});
+    try {
+        // First synchronize user session
+        await synchronizeUserSession();
+        
+        // Then load other settings
+        const data = await chrome.storage.local.get([
+            'settings',
+            'autoScan',
+            'protectionLevel'
+        ]);
+        
+        const settings = data.settings || {};
+        protectionLevel = data.protectionLevel || settings.protectionLevel || 'medium';
+        
+        // Auto-scan only for paid users
+        if (userSubscription === 'paid' && userFeatures.autoScan) {
+            isAutoScanEnabled = data.autoScan !== false && settings.autoScan !== false;
+        } else {
+            isAutoScanEnabled = false;
+        }
+        
+        console.log(`💰 Subscription: ${userSubscription}`);
+        console.log(`🎯 Features:`, userFeatures);
+        console.log(`⚙️ Auto-scan: ${isAutoScanEnabled}, Level: ${protectionLevel}`);
+        
+    } catch (error) {
+        console.error('❌ Initialization error:', error);
+        userSubscription = 'free';
+        isAutoScanEnabled = false;
+    }
+}
 
-// Also listen for individual setting changes
+// Initialize on startup
+initializeBackground();
+
+// ===== STORAGE CHANGE LISTENER FOR REAL-TIME SYNC =====
 chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local') {
-        if (changes.autoScan) {
-            isAutoScanEnabled = changes.autoScan.newValue !== false;
-            console.log(`⚙️ Auto-scan changed: ${isAutoScanEnabled}`);
+        // If user logs in/out, sync immediately
+        if (changes.userLoggedIn) {
+            console.log('🔄 User login state changed, syncing...');
+            setTimeout(synchronizeUserSession, 100);
         }
+        
+        // Update subscription if changed
+        if (changes.userSubscription) {
+            userSubscription = changes.userSubscription.newValue || 'free';
+            console.log(`💰 Subscription changed: ${userSubscription}`);
+            
+            // Update features if changed
+            if (changes.userFeatures) {
+                userFeatures = changes.userFeatures.newValue || {};
+            }
+            
+            // Update auto-scan based on subscription
+            if (userSubscription === 'paid' && userFeatures.autoScan) {
+                isAutoScanEnabled = changes.settings?.newValue?.autoScan !== false;
+            } else {
+                isAutoScanEnabled = false; // Force disable for free users
+            }
+        }
+        
+        // Update features
+        if (changes.userFeatures) {
+            userFeatures = changes.userFeatures.newValue || {};
+            console.log('🎯 Features updated:', userFeatures);
+            
+            // Update auto-scan based on features
+            if (userSubscription === 'paid') {
+                isAutoScanEnabled = userFeatures.autoScan && (changes.settings?.newValue?.autoScan !== false);
+            }
+        }
+        
+        // Update settings
+        if (changes.settings) {
+            const newSettings = changes.settings.newValue || {};
+            protectionLevel = newSettings.protectionLevel || 'medium';
+            
+            // Auto-scan only for paid users
+            if (userSubscription === 'paid' && userFeatures.autoScan) {
+                isAutoScanEnabled = newSettings.autoScan !== false;
+            }
+            
+            console.log(`⚙️ Settings updated: Auto-scan=${isAutoScanEnabled}, Level=${protectionLevel}`);
+        }
+        
         if (changes.protectionLevel) {
             protectionLevel = changes.protectionLevel.newValue || 'medium';
             console.log(`⚙️ Protection level changed: ${protectionLevel}`);
         }
-        if (changes.blockDangerous) {
-            console.log(`⚙️ Auto-block changed: ${changes.blockDangerous.newValue}`);
+        
+        if (changes.autoScan) {
+            // Only respect auto-scan for paid users
+            if (userSubscription === 'paid' && userFeatures.autoScan) {
+                isAutoScanEnabled = changes.autoScan.newValue !== false;
+                console.log(`⚙️ Auto-scan changed: ${isAutoScanEnabled}`);
+            }
         }
     }
 });
-// ===== URL MONITORING =====
-// Listen for tab updates
+
+// ===== URL MONITORING (PAID USERS ONLY) =====
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'complete' && tab.url && isAutoScanEnabled) {
-        console.log(`🔄 Auto-scanning: ${tab.url}`);
+    // Check if user is paid and auto-scan is enabled
+    if (userSubscription !== 'paid' || !isAutoScanEnabled) {
+        return;
+    }
+    
+    if (changeInfo.status === 'complete' && tab.url) {
+        console.log(`🔄 Paid user auto-scanning: ${tab.url}`);
         await analyzeUrl(tab.url, tabId);
     }
 });
 
-// Listen for tab activation (switching tabs)
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    if (!isAutoScanEnabled) return;
+    // Check if user is paid and auto-scan is enabled
+    if (userSubscription !== 'paid' || !isAutoScanEnabled) {
+        return;
+    }
     
     try {
         const tab = await chrome.tabs.get(activeInfo.tabId);
         if (tab && tab.url) {
-            console.log(`🔍 Tab activated, scanning: ${tab.url}`);
+            console.log(`🔍 Paid user tab activated, scanning: ${tab.url}`);
             await analyzeUrl(tab.url, tab.id);
         }
     } catch (error) {
@@ -83,17 +196,21 @@ async function updateBadge(score, tabId) {
     try {
         await chrome.action.setBadgeBackgroundColor({ color, tabId });
         await chrome.action.setBadgeText({ text, tabId });
-        
     } catch (error) {
         console.warn('Could not update badge:', error);
     }
 }
 
-// ===== URL ANALYSIS =====
-// ===== URL ANALYSIS =====
+// ===== SUBSCRIPTION-BASED URL ANALYSIS =====
 async function analyzeUrl(url, tabId) {
+    // Skip if not paid user or auto-scan disabled
+    if (userSubscription !== 'paid' || !isAutoScanEnabled) {
+        console.log('⏭️ Skipping auto-scan (free user or disabled)');
+        return;
+    }
+    
     try {
-        console.log(`🔍 Analyzing URL: ${url}`);
+        console.log(`🔍 Paid user analyzing URL: ${url}`);
         
         // Skip chrome:// and extension pages
         if (url.startsWith('chrome://') || url.startsWith('chrome-extension://')) {
@@ -117,7 +234,11 @@ async function analyzeUrl(url, tabId) {
         if (blacklist.includes(hostname)) {
             console.log(`🚨 Blacklisted: ${hostname}`);
             await updateBadge(95, tabId);
-            await showBlockedPage(tabId, url, "blacklisted", 95);
+            
+            // Show red screen for paid users only
+            if (userFeatures.redScreen) {
+                await showBlockedPage(tabId, url, "blacklisted", 95);
+            }
             return;
         }
         
@@ -151,9 +272,8 @@ async function analyzeUrl(url, tabId) {
         // Update badge with score
         await updateBadge(finalScore, tabId);
         
-        // === CHECK SETTINGS ===
-        const { settings = {} } = await chrome.storage.local.get('settings');
-        const shouldAutoBlock = settings.blockDangerous !== false;
+        // === CHECK SUBSCRIPTION FOR AUTO-BLOCK ===
+        const shouldAutoBlock = userSubscription === 'paid' && userFeatures.autoBlock;
         
         // Adjust thresholds based on protection level
         let autoBlockThreshold = 80;
@@ -170,13 +290,13 @@ async function analyzeUrl(url, tabId) {
             warningMax = 69;
         }
         
-        console.log(`⚙️ Settings: Auto-scan=${isAutoScanEnabled}, Auto-block=${shouldAutoBlock}, Level=${protectionLevel}`);
+        console.log(`💰 Subscription: ${userSubscription}, Auto-block: ${shouldAutoBlock}, Level: ${protectionLevel}`);
         console.log(`📊 Score: ${finalScore}, Thresholds - Warning: ${warningMin}-${warningMax}, Auto-block: ≥${autoBlockThreshold}`);
         
         // === DECISION LOGIC ===
         if (shouldAutoBlock && finalScore >= autoBlockThreshold) {
-            // SCENARIO 1: AUTO-BLOCK (score ≥ autoBlockThreshold)
-            console.log(`🚨 AUTO-BLOCKING: ${url} (Score: ${finalScore})`);
+            // SCENARIO 1: PAID USER AUTO-BLOCK
+            console.log(`🚨 PAID USER AUTO-BLOCKING: ${url} (Score: ${finalScore})`);
             
             // Add to blacklist
             if (!blacklist.includes(hostname)) {
@@ -191,17 +311,21 @@ async function analyzeUrl(url, tabId) {
             }
             
             await updateBadge(95, tabId);
-            await showBlockedPage(tabId, url, "auto_blocked", finalScore);
+            
+            // Show red screen for paid users only
+            if (userFeatures.redScreen) {
+                await showBlockedPage(tabId, url, "auto_blocked", finalScore);
+            }
             return;
             
         } else if (finalScore >= warningMin && finalScore <= warningMax) {
-            // SCENARIO 2: WARNING SCREEN (score in warning range)
+            // SCENARIO 2: WARNING SCREEN (for all users)
             console.log(`⚠️ High risk detected (${finalScore}/100), showing warning screen`);
             await showWarningBanner(tabId, url, finalScore);
             
         } else if (finalScore >= autoBlockThreshold) {
-            // SCENARIO 3: HIGH SCORE BUT AUTO-BLOCK DISABLED
-            console.log(`⚠️ Very high risk detected (${finalScore}/100) but auto-block is disabled`);
+            // SCENARIO 3: HIGH SCORE BUT NO AUTO-BLOCK (free users)
+            console.log(`⚠️ Very high risk detected (${finalScore}/100) but user cannot auto-block`);
             await showWarningBanner(tabId, url, finalScore);
         }
         
@@ -238,12 +362,11 @@ function performHeuristicAnalysis(url) {
         const search = urlObj.search.toLowerCase();
         
         // === BASE SCORING ===
-        // Start with a base score based on protocol
         if (urlObj.protocol === 'https:') {
-            score = 20; // HTTPS sites start at 20 (safer)
+            score = 20;
             factors.push('https_base:20');
         } else {
-            score = 50; // HTTP sites start at 50 (riskier)
+            score = 50;
             factors.push('http_base:50');
         }
         
@@ -255,22 +378,18 @@ function performHeuristicAnalysis(url) {
             factors.push('trusted_tld:-15');
         }
         
-        // Short, simple domain
         if (hostname.length < 20 && hostname.split('.').length === 2) {
             score -= 10;
             factors.push('simple_domain:-10');
         }
         
         // === DANGEROUS INDICATORS (INCREASE SCORE) ===
-        
-        // Non-standard port (VERY suspicious)
         if (port !== '80' && port !== '443' && port !== '') {
             warnings.push(`🚨 Using non-standard port ${port} (common for malware)`);
             score += 40;
             factors.push(`port_${port}:40`);
         }
         
-        // Localhost or local IP (testing/malware)
         if (hostname === 'localhost' || hostname === '127.0.0.1' || 
             hostname.startsWith('192.168.') || hostname.startsWith('10.')) {
             warnings.push('🚨 Local/private network address (suspicious for public site)');
@@ -278,7 +397,6 @@ function performHeuristicAnalysis(url) {
             factors.push('local_network:30');
         }
         
-        // Suspicious TLDs
         const suspiciousTLDs = ['.xyz', '.top', '.club', '.info', '.bid', '.win', '.tk', '.ml', '.ga', '.cf', '.gq'];
         const hasSuspiciousTLD = suspiciousTLDs.some(tld => hostname.endsWith(tld));
         if (hasSuspiciousTLD) {
@@ -287,7 +405,6 @@ function performHeuristicAnalysis(url) {
             factors.push('suspicious_tld:25');
         }
         
-        // Check PATH for suspicious keywords (more important than domain)
         const pathKeywords = [
             { pattern: /login/i, points: 25, message: 'Contains "login" in path' },
             { pattern: /admin/i, points: 30, message: 'Contains "admin" in path' },
@@ -309,7 +426,6 @@ function performHeuristicAnalysis(url) {
             }
         });
         
-        // Check DOMAIN for suspicious keywords (less weight than path)
         const domainKeywords = [
             { pattern: /login/i, points: 15, message: 'Contains "login" in domain' },
             { pattern: /secure/i, points: 12, message: 'Contains "secure" in domain' },
@@ -327,7 +443,6 @@ function performHeuristicAnalysis(url) {
             }
         });
         
-        // Dashes in domain (common in phishing)
         const dashCount = (hostname.match(/-/g) || []).length;
         if (dashCount >= 1) {
             warnings.push(`🚨 ${dashCount} dash(es) in domain (phishing pattern)`);
@@ -335,14 +450,12 @@ function performHeuristicAnalysis(url) {
             factors.push(`dashes:${dashCount * 8}`);
         }
         
-        // Long domain name
         if (hostname.length > 30) {
             warnings.push('⚠️ Very long domain name (obfuscation)');
             score += 15;
             factors.push('long_domain:15');
         }
         
-        // Multiple subdomains
         const subdomainCount = hostname.split('.').length - 1;
         if (subdomainCount > 2) {
             warnings.push(`⚠️ ${subdomainCount} subdomains (excessive)`);
@@ -350,7 +463,6 @@ function performHeuristicAnalysis(url) {
             factors.push(`subdomains:${subdomainCount * 4}`);
         }
         
-        // Encoded characters
         if (url.includes('%') || url.includes('&')) {
             warnings.push('⚠️ Contains encoded characters');
             score += 10;
@@ -362,17 +474,12 @@ function performHeuristicAnalysis(url) {
         score = 85;
     }
     
-    // Add random variation (±10 points) to create different score ranges
-    const randomVariation = Math.floor(Math.random() * 21) - 10; // -10 to +10
+    const randomVariation = Math.floor(Math.random() * 21) - 10;
     score += randomVariation;
-    
-    // Cap the score
     score = Math.max(0, Math.min(100, score));
     
-    // DEBUG: Log for medium-high scores
     if (score > 50) {
         console.log(`🔍 Score breakdown for ${url}: ${score} (factors: ${factors.join(', ')})`);
-        console.log(`📝 Warnings: ${warnings.slice(0, 3).join(' | ')}`);
     }
     
     return {
@@ -382,22 +489,19 @@ function performHeuristicAnalysis(url) {
         factors: factors
     };
 }
-// ===== RELIABLE WARNING BANNER =====
- // ===== WARNING SCREEN (Yellow for suspicious sites) =====
+
+// ===== WARNING SCREEN =====
 async function showWarningBanner(tabId, url, score) {
     console.log(`⚠️ Showing warning screen for ${url} (score: ${score})`);
     
     try {
-        // Small delay to ensure page is loaded
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Inject the blocked screen script first
         await chrome.scripting.executeScript({
             target: { tabId },
             files: ['blocked_screen.js']
         });
         
-        // Call the injection function with score
         await chrome.scripting.executeScript({
             target: { tabId },
             func: (url, score) => {
@@ -411,22 +515,18 @@ async function showWarningBanner(tabId, url, score) {
         console.log(`✅ Warning screen shown for ${url}`);
         
     } catch (error) {
-        console.log(`⚠️ Could not show warning screen for ${url}: ${error.message}`);
-        // Fallback to simple banner
+        console.log(`⚠️ Could not show warning screen: ${error.message}`);
         await showSimpleWarningBanner(tabId, url, score);
     }
 }
 
-// Simple banner fallback
 async function showSimpleWarningBanner(tabId, url, score) {
     await chrome.scripting.executeScript({
         target: { tabId },
         func: (url, score) => {
-            // Remove existing banner
             const oldBanner = document.querySelector('.cyber-kavach-warning');
             if (oldBanner) oldBanner.remove();
             
-            // Create simple banner
             const banner = document.createElement('div');
             banner.className = 'cyber-kavach-warning';
             banner.innerHTML = `
@@ -496,7 +596,6 @@ async function showSimpleWarningBanner(tabId, url, score) {
             document.body.appendChild(banner);
             document.body.style.paddingTop = '56px';
             
-            // Event listeners
             document.getElementById('dismissBtn').addEventListener('click', () => {
                 banner.remove();
                 document.body.style.paddingTop = '';
@@ -519,23 +618,20 @@ async function showSimpleWarningBanner(tabId, url, score) {
     });
 }
 
-// ===== ROBUST BLOCKED PAGE =====
 // ===== RED SCREEN BLOCKING =====
 async function showBlockedPage(tabId, url, reason, riskScore = null) {
     console.log(`🛑 Showing red screen for ${url}, reason: ${reason}, riskScore: ${riskScore}`);
     
     try {
-        // Verify the tab still exists
         let tab;
         try {
             tab = await chrome.tabs.get(tabId);
             console.log(`✅ Tab ${tabId} exists, status: ${tab.status}, url: ${tab.url}`);
         } catch (tabError) {
-            console.log(`⚠️ Tab ${tabId} no longer exists or cannot be accessed`);
+            console.log(`⚠️ Tab ${tabId} no longer exists`);
             return;
         }
         
-        // First inject the CSS styles
         await chrome.scripting.insertCSS({
             target: { tabId },
             css: `
@@ -721,21 +817,17 @@ async function showBlockedPage(tabId, url, reason, riskScore = null) {
             `
         });
         
-        // Then inject the blocked screen script
         await chrome.scripting.executeScript({
             target: { tabId },
             files: ['blocked_screen.js']
         });
         
-        // Call the injection function
         await chrome.scripting.executeScript({
             target: { tabId },
             func: (url, reason, riskScore) => {
                 if (window.injectRedScreen) {
                     window.injectRedScreen(url, reason, riskScore);
                 } else {
-                    console.error('injectRedScreen not available');
-                    // Fallback
                     document.body.innerHTML = `
                         <div style="
                             position: fixed;
@@ -776,13 +868,10 @@ async function showBlockedPage(tabId, url, reason, riskScore = null) {
         
     } catch (error) {
         console.error('❌ Error showing red screen:', error);
-        
-        // Fallback to simple blocked page
         await showSimpleBlockedPage(tabId, url, reason);
     }
 }
 
-// Fallback function for when injection fails
 async function showSimpleBlockedPage(tabId, url, reason) {
     const blockedHTML = `
         <!DOCTYPE html>
@@ -882,6 +971,7 @@ async function showSimpleBlockedPage(tabId, url, reason) {
     const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(blockedHTML)}`;
     await chrome.tabs.update(tabId, { url: dataUrl });
 }
+
 // ===== MESSAGE HANDLING =====
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('📨 Background received:', message.type);
@@ -903,46 +993,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     if (message.type === 'REPORT_SITE') {
         console.log('📢 Report received:', message.url);
+        
+        // Check if paid user can auto-block
+        if (userSubscription === 'paid' && userFeatures.autoBlock && message.riskScore >= 80) {
+            console.log(`🛑 Paid user auto-blocking site: ${message.url}`);
+            handleAutoBlock(message.url, sender.tab?.id, message.riskScore);
+        }
+        
         handleReportSite(message.url, sender.tab?.id).then(() => {
             sendResponse({success: true, message: 'Site reported successfully'});
         }).catch(error => {
             sendResponse({success: false, error: error.message});
         });
-        return true; // Keep the message channel open for async response
+        return true;
     }
-    
-    
     
     if (message.type === 'HIGH_RISK_DETECTED') {
         console.log(`🚨 High risk detected from ML scan: ${message.url} (${message.score}/100)`);
         
-        // Check settings for auto-block
-        chrome.storage.local.get(['settings'], async (result) => {
-            const shouldAutoBlock = result.settings?.blockDangerous !== false;
+        // Auto-block for paid users only
+        if (userSubscription === 'paid' && userFeatures.autoBlock && message.score >= 80) {
+            console.log(`🛑 Paid user auto-blocking high risk site: ${message.url}`);
             
-            if (shouldAutoBlock && message.score >= 80) {
-                console.log(`🛑 Auto-blocking high risk site: ${message.url}`);
-                
-                const urlObj = new URL(message.url);
-                const hostname = urlObj.hostname;
-                
-                // Add to blacklist
-                const { blacklist = [] } = await chrome.storage.local.get('blacklist');
+            const urlObj = new URL(message.url);
+            const hostname = urlObj.hostname;
+            
+            chrome.storage.local.get(['blacklist'], async (result) => {
+                const { blacklist = [] } = result;
                 if (!blacklist.includes(hostname)) {
                     blacklist.push(hostname);
                     await chrome.storage.local.set({ blacklist: blacklist });
                     
-                    // Update blocked count
                     const { blockedCount = 0 } = await chrome.storage.local.get('blockedCount');
                     await chrome.storage.local.set({ blockedCount: blockedCount + 1 });
                 }
                 
-                // Show red screen
-                if (sender?.tab?.id) {
+                if (userFeatures.redScreen && sender?.tab?.id) {
                     await showBlockedPage(sender.tab.id, message.url, "ml_high_risk", message.score);
                 }
-            }
-        });
+            });
+        }
         
         sendResponse({ success: true });
         return true;
@@ -950,35 +1040,79 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     if (message.type === 'UPDATE_SETTINGS') {
         if (message.settings) {
-            isAutoScanEnabled = message.settings.autoScan !== false;
             protectionLevel = message.settings.protectionLevel || 'medium';
+            
+            // Auto-scan only for paid users
+            if (userSubscription === 'paid' && userFeatures.autoScan) {
+                isAutoScanEnabled = message.settings.autoScan !== false;
+            } else {
+                isAutoScanEnabled = false;
+            }
+            
             console.log(`⚙️ Settings updated: Auto-scan=${isAutoScanEnabled}, Level=${protectionLevel}`);
         }
         sendResponse({success: true});
     }
     
+    if (message.type === 'UPDATE_SUBSCRIPTION') {
+        userSubscription = message.subscription || 'free';
+        userFeatures = message.features || {};
+        
+        // Update auto-scan based on subscription
+        if (userSubscription === 'paid' && userFeatures.autoScan) {
+            chrome.storage.local.get(['settings'], (result) => {
+                isAutoScanEnabled = result.settings?.autoScan !== false;
+                console.log(`💰 Subscription updated: ${userSubscription}, Auto-scan=${isAutoScanEnabled}`);
+            });
+        } else {
+            isAutoScanEnabled = false;
+            console.log(`💰 Subscription updated: ${userSubscription}, Auto-scan disabled`);
+        }
+        
+        sendResponse({success: true});
+    }
+    
     return true;
-
 });
 
-// ===== FIXED REPORT HANDLING =====
+// ===== AUTO-BLOCK HANDLING =====
+async function handleAutoBlock(url, tabId, riskScore) {
+    try {
+        const urlObj = new URL(url);
+        const hostname = urlObj.hostname;
+        
+        const { blacklist = [] } = await chrome.storage.local.get('blacklist');
+        if (!blacklist.includes(hostname)) {
+            blacklist.push(hostname);
+            await chrome.storage.local.set({ blacklist: blacklist });
+            
+            const { blockedCount = 0 } = await chrome.storage.local.get('blockedCount');
+            await chrome.storage.local.set({ blockedCount: blockedCount + 1 });
+            
+            console.log(`✅ Added to blacklist: ${hostname}`);
+        }
+        
+        if (userFeatures.redScreen && tabId) {
+            await showBlockedPage(tabId, url, "ml_high_risk", riskScore);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error in auto-block:', error);
+    }
+}
+
+// ===== REPORT HANDLING =====
 async function handleReportSite(url, tabId) {
-    console.log(`🔨 Handling report for: ${url}, tabId: ${tabId}`);
+    console.log(`🔨 Handling report for: ${url}`);
     
     try {
         const urlObj = new URL(url);
         const hostname = urlObj.hostname;
         
-        console.log(`📝 Extracted hostname: ${hostname}`);
-        
-        // Get current blacklist
         const data = await chrome.storage.local.get(['blacklist', 'blockedCount']);
         let blacklist = data.blacklist || [];
         let blockedCount = data.blockedCount || 0;
         
-        console.log(`📋 Current blacklist length:`, blacklist.length);
-        
-        // Add to blacklist if not already there
         if (!blacklist.includes(hostname)) {
             blacklist.push(hostname);
             await chrome.storage.local.set({ 
@@ -986,36 +1120,16 @@ async function handleReportSite(url, tabId) {
                 blockedCount: blockedCount + 1 
             });
             
-            console.log(`✅ Added to blacklist: ${hostname}`);
-            console.log(`📊 New blacklist length:`, blacklist.length);
+            console.log(`✅ Site reported: ${hostname}`);
             
-            // Update badge to show it's blocked
             if (tabId) {
-                try {
-                    await chrome.action.setBadgeBackgroundColor({ color: '#ef4444', tabId });
-                    await chrome.action.setBadgeText({ text: '!', tabId });
-                    console.log(`✅ Updated badge for tab ${tabId}`);
-                } catch (badgeError) {
-                    console.log('Could not update badge:', badgeError);
-                }
-            }
-            
-            // Send confirmation to popup if open
-            try {
-                await chrome.runtime.sendMessage({
-                    type: 'REPORT_CONFIRMED',
-                    url: url,
-                    hostname: hostname
-                });
-                console.log('✅ Sent confirmation to popup');
-            } catch (e) {
-                console.log('Popup not open, cannot send confirmation');
+                await updateBadge(95, tabId);
             }
             
             return { success: true, hostname: hostname };
             
         } else {
-            console.log(`ℹ️ ${hostname} is already in blacklist`);
+            console.log(`ℹ️ Already reported: ${hostname}`);
             return { success: true, alreadyReported: true };
         }
         
@@ -1038,33 +1152,16 @@ async function sendToPopup(analysis, url) {
     }
 }
 
-// Listen for storage changes
-chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.settings) {
-        const newSettings = changes.settings.newValue;
-        isAutoScanEnabled = newSettings.autoScan !== false;
-        protectionLevel = newSettings.protectionLevel || 'medium';
-        console.log(`⚙️ Settings changed: Auto-scan=${isAutoScanEnabled}, Level=${protectionLevel}`);
-    }
-});
-
-// Debug: Log when background script wakes up
-chrome.runtime.onStartup.addListener(() => {
-    console.log('🔄 Cyber Kavach background script started');
-});
-
-// ===== AUTOMATIC ML SCANNING =====
+// ===== ML SCANNING =====
 async function performMLScan(url, tabId) {
-    console.log(`🧠 Performing automatic ML scan for: ${url}`);
+    console.log(`🧠 Performing ML scan for: ${url}`);
     
     try {
-        // Skip if ML server not available
         if (!await checkMLServer()) {
-            console.log('ML server not available, skipping ML scan');
+            console.log('ML server not available');
             return null;
         }
         
-        // Perform ML scan
         const response = await fetch("http://127.0.0.1:5000/predict", {
             method: "POST",
             headers: {
@@ -1078,12 +1175,10 @@ async function performMLScan(url, tabId) {
         }
         
         const data = await response.json();
-        console.log(`✅ ML scan result for ${url}:`, data);
+        console.log(`✅ ML scan result:`, data);
         
-        // Update badge based on ML result
         await updateBadge(data.risk_score || 50, tabId);
         
-        // Store ML analysis
         const analysis = {
             score: data.risk_score || 50,
             prediction: data.prediction || 'Unknown',
@@ -1095,7 +1190,6 @@ async function performMLScan(url, tabId) {
         const urlKey = `ml_analysis_${url}`;
         await chrome.storage.local.set({ [urlKey]: analysis });
         
-        // Take action based on ML result
         await handleMLResult(data, url, tabId);
         
         return data;
@@ -1106,7 +1200,6 @@ async function performMLScan(url, tabId) {
     }
 }
 
-// Check if ML server is running
 async function checkMLServer() {
     try {
         const response = await fetch("http://127.0.0.1:5000/health", { timeout: 3000 });
@@ -1116,19 +1209,16 @@ async function checkMLServer() {
     }
 }
 
-// Handle ML scan results
 async function handleMLResult(data, url, tabId) {
-    const { settings = {} } = await chrome.storage.local.get('settings');
-    const shouldAutoBlock = settings.blockDangerous !== false;
-    
-    // Check if ML says it's phishing
-    if (data.prediction === 'Phishing' && data.confidence > 0.7) {
+    // Auto-block only for paid users
+    if (userSubscription === 'paid' && userFeatures.autoBlock && 
+        data.prediction === 'Phishing' && data.confidence > 0.7) {
+        
         const riskScore = data.risk_score || 80;
         
-        if (shouldAutoBlock && riskScore >= 80) {
-            console.log(`🚨 ML detected phishing with high confidence, blocking: ${url}`);
+        if (riskScore >= 80) {
+            console.log(`🚨 ML detected phishing, blocking: ${url}`);
             
-            // Add to blacklist
             const urlObj = new URL(url);
             const hostname = urlObj.hostname;
             
@@ -1137,18 +1227,23 @@ async function handleMLResult(data, url, tabId) {
                 blacklist.push(hostname);
                 await chrome.storage.local.set({ blacklist: blacklist });
                 
-                // Update blocked count
                 const { blockedCount = 0 } = await chrome.storage.local.get('blockedCount');
                 await chrome.storage.local.set({ blockedCount: blockedCount + 1 });
             }
             
-            // Show blocked page
-           await showBlockedPage(tabId, url, "ml_phishing_detected", riskScore);
+            if (userFeatures.redScreen) {
+                await showBlockedPage(tabId, url, "ml_phishing_detected", riskScore);
+            }
             
-        }  else if (riskScore >= 60 && riskScore < 80) {  // Only show if score 60-79
+        } else if (riskScore >= 60 && riskScore < 80) {
             console.log(`⚠️ ML detected potential phishing, showing warning: ${url}`);
             await showWarningBanner(tabId, url, riskScore);
         }
     }
 }
 
+// ===== STARTUP =====
+chrome.runtime.onStartup.addListener(() => {
+    console.log('🔄 Cyber Kavach background script started');
+    initializeBackground();
+});

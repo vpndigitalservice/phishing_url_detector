@@ -1,4 +1,4 @@
-// ===== AUTO ML-SCANNING VERSION =====
+// ===== CYBER KAVACH WITH SUBSCRIPTION SYSTEM =====
 console.log("🚀 Cyber Kavach Popup loaded!");
 
 // DOM Elements
@@ -10,6 +10,8 @@ const scoreFill = document.getElementById('scoreFill');
 const warningsList = document.getElementById('warningsList');
 const scannedCount = document.getElementById('scannedCount');
 const blockedCount = document.getElementById('blockedCount');
+const userEmail = document.getElementById('userEmail');
+const logoutLink = document.getElementById('logoutLink');
 
 // Buttons
 const scanBtn = document.getElementById('scanBtn');
@@ -23,21 +25,303 @@ const tabContents = document.querySelectorAll('.tab-content');
 // State
 let currentTab = null;
 let lastAnalysis = null;
+let userSubscription = 'free';
+let userFeatures = {};
 
-// ===== INITIALIZE =====
+
+// ===== LOADING STATE =====
+function showLoadingState() {
+    console.log("⏳ Showing loading state...");
+    
+    // Show loading in UI
+    if (statusText) statusText.textContent = 'Loading...';
+    if (statusDot) {
+        statusDot.className = 'status-dot warning';
+        statusDot.style.animation = 'pulse 1s infinite';
+    }
+    if (currentUrl) currentUrl.textContent = 'Loading authentication...';
+    if (scoreValue) scoreValue.textContent = '--';
+    if (scoreFill) scoreFill.style.width = '0%';
+    if (warningsList) warningsList.textContent = 'Checking user session...';
+    
+    // Disable buttons
+    if (scanBtn) scanBtn.disabled = true;
+    if (whitelistBtn) whitelistBtn.disabled = true;
+    if (reportBtn) reportBtn.disabled = true;
+}
+
+function hideLoadingState() {
+    console.log("✅ Loading state hidden");
+    
+    // Re-enable buttons (will be adjusted by subscription later)
+    if (scanBtn) scanBtn.disabled = false;
+    if (whitelistBtn) whitelistBtn.disabled = false;
+    if (reportBtn) reportBtn.disabled = false;
+}
+
+
+
+
+// ===== AUTHENTICATION CHECK WITH DELAY =====
+async function checkAuthentication() {
+    console.log("🔐 Checking authentication...");
+    
+    // Show loading state immediately
+    showLoadingState();
+    
+    try {
+        // Add a small delay to ensure storage is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const data = await chrome.storage.local.get([
+            'userLoggedIn', 
+            'userEmail', 
+            'userName', 
+            'userSubscription',
+            'userFeatures'
+        ]);
+        
+        console.log("📊 Auth check data:", data);
+        
+        if (!data.userLoggedIn) {
+            console.log('❌ User not logged in, redirecting to login...');
+            hideLoadingState();
+            window.location.href = '../login/login.html';
+            return false;
+        }
+        
+        // Store user data
+        userSubscription = data.userSubscription || 'free';
+        userFeatures = data.userFeatures || {};
+        
+        console.log('✅ User authenticated:', data.userEmail);
+        console.log('💰 Subscription:', userSubscription);
+        console.log('🎯 Features:', userFeatures);
+        
+        // Display user info in footer
+        if (userEmail && data.userEmail) {
+            const displayName = data.userName || data.userEmail.split('@')[0];
+            userEmail.textContent = `${displayName} (${userSubscription.toUpperCase()})`;
+            
+            // Add subscription badge
+            const badge = document.createElement('span');
+            badge.className = 'subscription-badge';
+            badge.textContent = userSubscription === 'paid' ? '⭐ PRO' : '🆓 FREE';
+            badge.style.marginLeft = '8px';
+            badge.style.fontSize = '10px';
+            badge.style.padding = '2px 6px';
+            badge.style.borderRadius = '4px';
+            badge.style.background = userSubscription === 'paid' 
+                ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' 
+                : '#6b7280';
+            badge.style.color = 'white';
+            badge.style.fontWeight = 'bold';
+            
+            userEmail.appendChild(badge);
+        }
+        
+        // Hide loading state
+        hideLoadingState();
+        
+        // Apply subscription-based restrictions
+        applySubscriptionRestrictions();
+        
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Auth check error:', error);
+        hideLoadingState();
+        
+        // Don't redirect immediately on error - try to continue
+        showError("Authentication error. Please refresh.");
+        return false;
+    }
+}
+
+
+// ===== APPLY SUBSCRIPTION RESTRICTIONS =====
+function applySubscriptionRestrictions() {
+    console.log('🔒 Applying subscription restrictions...');
+    
+    // Update UI based on subscription
+    if (userSubscription === 'free') {
+        console.log('🆓 FREE user - Limited features');
+        
+        // Disable auto-scan in settings
+        const autoScanCheckbox = document.getElementById('autoScan');
+        const blockDangerousCheckbox = document.getElementById('blockDangerous');
+        
+        if (autoScanCheckbox) {
+            autoScanCheckbox.checked = false;
+            autoScanCheckbox.disabled = true;
+            autoScanCheckbox.parentElement.style.opacity = '0.6';
+        }
+        
+        if (blockDangerousCheckbox) {
+            blockDangerousCheckbox.checked = false;
+            blockDangerousCheckbox.disabled = true;
+            blockDangerousCheckbox.parentElement.style.opacity = '0.6';
+        }
+        
+        // Add info message about free tier
+        addSubscriptionNotice();
+        
+    } else {
+        console.log('⭐ PAID user - Full features');
+        
+        // Enable all features
+        const autoScanCheckbox = document.getElementById('autoScan');
+        const blockDangerousCheckbox = document.getElementById('blockDangerous');
+        
+        if (autoScanCheckbox) {
+            autoScanCheckbox.disabled = false;
+            autoScanCheckbox.parentElement.style.opacity = '1';
+        }
+        
+        if (blockDangerousCheckbox) {
+            blockDangerousCheckbox.disabled = false;
+            blockDangerousCheckbox.parentElement.style.opacity = '1';
+        }
+    }
+    
+    // Update background script with subscription info
+    updateBackgroundSubscription();
+}
+
+// Add subscription notice for free users
+function addSubscriptionNotice() {
+    const mainTab = document.getElementById('main-tab');
+    if (!mainTab) return;
+    
+    // Check if notice already exists
+    if (document.getElementById('subscriptionNotice')) return;
+    
+    const notice = document.createElement('div');
+    notice.id = 'subscriptionNotice';
+    notice.innerHTML = `
+        <div style="
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 4px solid #f59e0b;
+            font-size: 13px;
+            line-height: 1.4;
+        ">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                <span style="font-size: 18px;">🆓</span>
+                <strong>Free Plan Active</strong>
+            </div>
+            <p style="margin: 5px 0; opacity: 0.9;">
+                Manual scanning only. Upgrade to <strong>PRO</strong> for:
+            </p>
+            <ul style="margin: 8px 0 5px 15px; opacity: 0.9;">
+                <li>✅ Automatic ML scanning</li>
+                <li>✅ Auto-block dangerous sites</li>
+                <li>✅ Red screen protection</li>
+                <li>✅ Advanced protection settings</li>
+            </ul>
+            <button id="upgradeBtn" style="
+                margin-top: 8px;
+                padding: 6px 12px;
+                background: #f59e0b;
+                color: #451a03;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 12px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            ">
+                ⭐ Upgrade to PRO
+            </button>
+        </div>
+    `;
+    
+    // Insert at the beginning of main tab
+    mainTab.insertBefore(notice, mainTab.firstChild);
+    
+    // Add upgrade button handler
+    document.getElementById('upgradeBtn').addEventListener('click', () => {
+        chrome.tabs.create({ url: '#' });
+    });
+}
+
+// Update background script with subscription info
+async function updateBackgroundSubscription() {
+    try {
+        await chrome.runtime.sendMessage({
+            type: 'UPDATE_SUBSCRIPTION',
+            subscription: userSubscription,
+            features: userFeatures
+        });
+        console.log('✅ Subscription sent to background:', userSubscription);
+    } catch (error) {
+        console.error('Error updating background subscription:', error);
+    }
+}
+
+// ===== LOGOUT FUNCTION =====
+async function logoutUser() {
+    try {
+        // Clear all user data
+        await chrome.storage.local.remove([
+            'userLoggedIn', 
+            'userEmail', 
+            'userId', 
+            'userName',
+            'userSubscription',
+            'userFeatures',
+            'lastLogin'
+        ]);
+        
+        console.log('User logged out successfully');
+        
+        // Redirect to login page
+        window.location.href = '../login/login.html';
+        
+    } catch (error) {
+        console.error('Logout error:', error);
+        alert('Logout failed. Please try again.');
+    }
+}
+
+// ===== INITIALIZE WITH RETRY LOGIC =====
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("📋 DOM loaded, initializing...");
     
     try {
-        // Check if elements exist
-        console.log("🔍 Checking elements:");
-        console.log("- Scan Button:", !!scanBtn);
-        console.log("- Current URL:", !!currentUrl);
+        // Check authentication first with retry
+        let authAttempts = 0;
+        const maxAuthAttempts = 3;
+        let isAuthenticated = false;
+        
+        while (authAttempts < maxAuthAttempts && !isAuthenticated) {
+            authAttempts++;
+            console.log(`🔄 Authentication attempt ${authAttempts}/${maxAuthAttempts}`);
+            
+            isAuthenticated = await checkAuthentication();
+            
+            if (!isAuthenticated && authAttempts < maxAuthAttempts) {
+                // Wait before retrying
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+        }
+        
+        if (!isAuthenticated) {
+            console.log("❌ Authentication failed after all attempts");
+            return;
+        }
+        
+        console.log("✅ Authentication successful, continuing initialization...");
         
         // Load stats
         await loadStats();
         
-        // Get current tab and auto-run ML scan
+        // Get current tab
         await updateCurrentTab();
         
         // Setup all event listeners
@@ -46,15 +330,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Setup tabs
         setupTabs();
         
-        console.log("✅ Popup ready!");
+        console.log("🎉 Popup fully initialized!");
         
     } catch (error) {
         console.error("❌ Initialization failed:", error);
-        showError("Failed to initialize");
+        showError("Failed to initialize. Please try again.");
+        hideLoadingState();
     }
 });
 
-// Listen for report confirmation from background
+// Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'REPORT_CONFIRMED') {
         console.log('✅ Report confirmed:', message.url);
@@ -83,37 +368,31 @@ async function updateCurrentTab() {
             currentUrl.textContent = url.length > 50 ? url.substring(0, 47) + '...' : url;
         }
         
-        // Auto-run ML scan when popup opens
-        if (url && !url.startsWith('chrome://') && !url.startsWith('chrome-extension://')) {
-            const analysis = await mlScan(url);  // <-- GET THE ANALYSIS RETURN VALUE
+        // Auto-run ML scan for PAID users only
+        if (userSubscription === 'paid' && url && !url.startsWith('chrome://') && !url.startsWith('chrome-extension://')) {
+            console.log('⭐ PAID user - Auto-scanning...');
+            const analysis = await mlScan(url);
             
-            // Check if high risk and notify background
-            if (analysis && analysis.score >= 80) {
+            // Check if high risk (only for paid users)
+            if (analysis && analysis.score >= 80 && userFeatures.autoBlock) {
                 console.log(`🚨 High risk detected (${analysis.score}/100), checking auto-block...`);
                 
                 try {
-                    // Check settings for auto-block
-                    const settings = await chrome.storage.local.get(['settings']);
-                    const shouldAutoBlock = settings.settings?.blockDangerous !== false;
+                    await chrome.runtime.sendMessage({
+                        type: 'REPORT_SITE',
+                        url: url,
+                        riskScore: analysis.score
+                    });
                     
-                    if (shouldAutoBlock && analysis.score >= 80) {
-                        console.log(`🛑 High risk + auto-block enabled, blocking: ${url}`);
-                        
-                        // Report/block the site
-                        await chrome.runtime.sendMessage({
-                            type: 'REPORT_SITE',
-                            url: url
-                        });
-                        
-                        // Show notification
-                        if (analysis.score >= 90) {
-                            alert(`🚨 EXTREME RISK DETECTED (${analysis.score}/100)\n\nThis website appears to be phishing/malicious.\n\nCyber Kavach has blocked this site.`);
-                        }
+                    if (analysis.score >= 90) {
+                        alert(`🚨 EXTREME RISK DETECTED (${analysis.score}/100)\n\nThis website appears to be phishing/malicious.\n\nCyber Kavach PRO has blocked this site.`);
                     }
                 } catch (error) {
                     console.error('Error checking auto-block:', error);
                 }
             }
+        } else if (url && !url.startsWith('chrome://') && !url.startsWith('chrome-extension://')) {
+            showInfo("Click 'Scan URL with ML' to check this site");
         } else {
             showInfo("Chrome pages cannot be scanned");
         }
@@ -143,7 +422,7 @@ async function mlScan(url) {
         scanBtn.disabled = true;
     }
     
-    let analysis = null; // <-- DECLARE analysis HERE
+    let analysis = null;
     
     try {
         console.log("🌐 Connecting to ML backend...");
@@ -164,7 +443,7 @@ async function mlScan(url) {
         console.log("✅ ML Analysis result:", data);
         
         // Create analysis object
-        analysis = {  // <-- ASSIGN TO analysis VARIABLE
+        analysis = {
             score: data.risk_score || 0,
             warnings: [
                 data.prediction === "Phishing" 
@@ -196,7 +475,7 @@ async function mlScan(url) {
         console.error("❌ ML scan failed:", error);
         
         // Fallback to local analysis
-        analysis = performLocalAnalysis(url);  // <-- ASSIGN TO analysis HERE TOO
+        analysis = performLocalAnalysis(url);
         analysis.warnings.push("⚠️ ML scan failed, using local analysis");
         updateDisplay(analysis);
         
@@ -209,8 +488,7 @@ async function mlScan(url) {
         }
     }
     
-    // Now analysis is guaranteed to be defined
-    return analysis; // <-- RETURN analysis AT THE END
+    return analysis;
 }
 
 // ===== LOCAL ANALYSIS FALLBACK =====
@@ -389,7 +667,7 @@ function setupAllListeners() {
         console.error("❌ Scan button not found!");
     }
     
-    // Whitelist Button
+    // Whitelist Button (available for all users)
     if (whitelistBtn) {
         whitelistBtn.addEventListener('click', async () => {
             if (!currentTab?.url) return;
@@ -420,7 +698,7 @@ function setupAllListeners() {
         });
     }
     
-    // Report Button
+    // Report Button (available for all users)
     if (reportBtn) {
         reportBtn.addEventListener('click', async () => {
             if (!currentTab?.url) {
@@ -431,7 +709,6 @@ function setupAllListeners() {
             console.log('📢 Report button clicked for:', currentTab.url);
             
             try {
-                // Direct storage update
                 const data = await chrome.storage.local.get(['blacklist', 'blockedCount']);
                 let blacklist = data.blacklist || [];
                 let blockedCount = data.blockedCount || 0;
@@ -484,6 +761,17 @@ function setupAllListeners() {
                 setTimeout(() => {
                     reportBtn.innerHTML = '⚠️ Report';
                 }, 2000);
+            }
+        });
+    }
+    
+    // Logout Link
+    if (logoutLink) {
+        logoutLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+            
+            if (confirm('Are you sure you want to logout from Cyber Kavach?')) {
+                await logoutUser();
             }
         });
     }
@@ -583,11 +871,17 @@ async function loadSettings() {
         if (soundAlerts) soundAlerts.checked = settings.soundAlerts || false;
         if (shareReports) shareReports.checked = settings.shareReports || false;
         
-        console.log('📊 Applied to UI:', {
-            protectionLevel: protectionLevel?.value,
-            autoScan: autoScan?.checked,
-            blockDangerous: blockDangerous?.checked
-        });
+        // Disable paid features for free users
+        if (userSubscription === 'free') {
+            if (autoScan) {
+                autoScan.checked = false;
+                autoScan.disabled = true;
+            }
+            if (blockDangerous) {
+                blockDangerous.checked = false;
+                blockDangerous.disabled = true;
+            }
+        }
         
     } catch (error) {
         console.error('❌ Error loading settings:', error);
@@ -599,8 +893,8 @@ async function saveSettings() {
         // Get current settings values
         const settings = {
             protectionLevel: document.getElementById('protectionLevel')?.value || 'medium',
-            autoScan: document.getElementById('autoScan')?.checked || false,
-            blockDangerous: document.getElementById('blockDangerous')?.checked || false,
+            autoScan: userSubscription === 'paid' ? (document.getElementById('autoScan')?.checked || false) : false,
+            blockDangerous: userSubscription === 'paid' ? (document.getElementById('blockDangerous')?.checked || false) : false,
             showWarnings: document.getElementById('showWarnings')?.checked || false,
             soundAlerts: document.getElementById('soundAlerts')?.checked || false,
             shareReports: document.getElementById('shareReports')?.checked || false
@@ -617,7 +911,8 @@ async function saveSettings() {
         // Notify background script
         await chrome.runtime.sendMessage({
             type: 'UPDATE_SETTINGS',
-            settings: settings
+            settings: settings,
+            subscription: userSubscription
         });
         
         // Show confirmation
@@ -640,7 +935,7 @@ async function saveSettings() {
 }
 
 function clearAllData() {
-    if (confirm('Are you sure you want to clear all data? This will reset:\n• Scan history\n• Whitelist/Blacklist\n• Reports')) {
+    if (confirm('Are you sure you want to clear all data? This will reset:\n• Scan history\n• Whitelist/Blacklist\n• Reports\n\nNote: This will NOT logout your account.')) {
         chrome.storage.local.set({
             scannedCount: 0,
             blockedCount: 0,
@@ -667,22 +962,3 @@ function clearAllData() {
         });
     }
 }
-
-// DEBUG: Test function to check current settings
-async function debugCurrentSettings() {
-    const all = await chrome.storage.local.get(null);
-    console.log('🔍 ALL STORED SETTINGS:', all);
-    
-    // Check specific settings
-    console.log('📊 Current settings:');
-    console.log('- autoScan:', all.autoScan);
-    console.log('- blockDangerous:', all.blockDangerous);
-    console.log('- protectionLevel:', all.protectionLevel);
-    console.log('- whitelist:', all.whitelist?.length || 0, 'sites');
-    console.log('- blacklist:', all.blacklist?.length || 0, 'sites');
-}
-
-// Call it when popup opens for debugging
-debugCurrentSettings();
-
-
