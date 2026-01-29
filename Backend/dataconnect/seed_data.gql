@@ -1,0 +1,63 @@
+mutation CreateSeedData @transaction @auth(level: NO_ACCESS) {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      createdAt: "2024-03-15T12:00:00Z",
+      email: "demouser1@example.com"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      createdAt: "2024-03-16T14:30:00Z",
+      email: "demouser2@example.com"
+    }
+  ])
+  uRLScan_insertMany(data: [
+    {
+      id: "650e8400-e29b-41d4-a716-446655440000",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      confidenceScore: 0.95,
+      isPhishing: true,
+      modelVersion: "v1",
+      scannedAt: "2024-03-17T10:00:00Z",
+      url: "http://example.com/phishing"
+    },
+    {
+      id: "650e8400-e29b-41d4-a716-446655440001",
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      confidenceScore: 0.2,
+      isPhishing: false,
+      modelVersion: "v1",
+      scannedAt: "2024-03-18T16:45:00Z",
+      url: "http://safeexample.com"
+    }
+  ])
+  reportedURL_insertMany(data: [
+    {
+      id: "750e8400-e29b-41d4-a716-446655440000",
+      urlScanId: "650e8400-e29b-41d4-a716-446655440000",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      reason: "Phishing detected",
+      reportedAt: "2024-03-17T10:30:00Z",
+      url: "http://example.com/phishing",
+      userComment: "User confirmed phishing"
+    }
+  ])
+  settings_insertMany(data: [
+    {
+      id: "850e8400-e29b-41d4-a716-446655440000",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      autoScanEnabled: true,
+      createdAt: "2024-03-15T12:30:00Z",
+      notificationLevel: "High",
+      updatedAt: "2024-03-15T13:00:00Z"
+    },
+        {
+      id: "850e8400-e29b-41d4-a716-446655440001",
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      autoScanEnabled: false,
+      createdAt: "2024-03-16T15:00:00Z",
+      notificationLevel: "Low",
+      updatedAt: "2024-03-16T15:30:00Z"
+    }
+  ])
+}

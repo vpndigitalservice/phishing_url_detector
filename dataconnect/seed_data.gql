@@ -1,0 +1,62 @@
+mutation CreateDemoData @transaction @auth(level: USER, insecureReason: "This operation is safe to expose to all logged in users.") {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      authId: "demouser1",
+      createdAt: "2024-04-01T00:00:00Z"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      authId: "demouser2",
+      createdAt: "2024-04-01T00:00:00Z"
+    }
+  ])
+  uRLCheck_insertMany(data: [
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      checkedAt: "2024-04-01T00:00:00Z",
+      details: "Example details 1",
+      domainInfo: "example.com 1",
+      status: "OK",
+      url: "http://example.com/1"
+    },
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      checkedAt: "2024-04-02T00:00:00Z",
+      details: "Example details 2",
+      domainInfo: "example.com 2",
+      status: "OK",
+      url: "http://example.com/2"
+    }
+  ])
+  trustedURL_insertMany(data: [
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      addedAt: "2024-04-03T00:00:00Z",
+      notes: "Example note 1",
+      url: "http://example.com/3"
+    },
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      addedAt: "2024-04-04T00:00:00Z",
+      notes: "Example note 2",
+      url: "http://example.com/4"
+    }
+  ])
+  reportedURL_insertMany(data: [
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      reportedAt: "2024-04-05T00:00:00Z",
+      notes: "Example report 1",
+      reportType: "Phishing",
+      url: "http://example.com/5"
+    },
+    {
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      reportedAt: "2024-04-06T00:00:00Z",
+      notes: "Example report 2",
+      reportType: "Malware",
+      url: "http://example.com/6"
+    }
+  ])
+}

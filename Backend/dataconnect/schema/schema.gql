@@ -1,0 +1,30 @@
+type User @table {
+  email: String
+  createdAt: Timestamp!
+}
+
+type URLScan @table {
+  user: User
+  url: String!
+  isPhishing: Boolean!
+  confidenceScore: Float!
+  scannedAt: Timestamp!
+  modelVersion: String
+}
+
+type ReportedURL @table {
+  user: User
+  urlScan: URLScan
+  url: String!
+  reportedAt: Timestamp!
+  reason: String!
+  userComment: String
+}
+
+type Settings @table {
+  user: User
+  autoScanEnabled: Boolean!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
+  notificationLevel: String
+}

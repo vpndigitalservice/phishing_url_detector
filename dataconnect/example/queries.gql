@@ -1,0 +1,36 @@
+mutation AddTrustedURL($url: String!, $notes: String) @auth(level: USER) {
+  trustedURL_insert(data: {
+    url: $url,
+    notes: $notes,
+    userId_expr: "auth.uid",
+    addedAt_expr: "request.time"
+  })
+}
+
+query GetURLChecks @auth(level: USER) {
+  uRLChecks(where: {userId: {eq_expr: "auth.uid"}}) {
+    url
+    status
+    checkedAt
+    details
+    domainInfo
+  }
+}
+
+mutation ReportURL($url: String!, $reportType: String!, $notes: String) @auth(level: USER) {
+  reportedURL_insert(data: {
+    url: $url,
+    reportType: $reportType,
+    notes: $notes,
+    userId_expr: "auth.uid",
+    reportedAt_expr: "request.time"
+  })
+}
+
+query ListTrustedURLs @auth(level: USER) {
+  trustedURLS(where: {userId: {eq_expr: "auth.uid"}}) {
+    url
+    notes
+    addedAt
+  }
+}

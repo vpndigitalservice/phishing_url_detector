@@ -1,0 +1,34 @@
+mutation CreateNewUser($email: String!) @auth(level: USER, insecureReason: "Creation of new user is safe to expose to all logged in users.") {
+  user_insert(data: { email: $email, createdAt_expr: "request.time", id_expr: "uuidV4()" })
+}
+
+query GetURLScansForCurrentUser @auth(level: USER) {
+  uRLScans(where: { userId: { eq_expr: "auth.uid" } }) {
+    id
+    url
+    isPhishing
+    confidenceScore
+    scannedAt
+  }
+}
+
+mutation ReportURL($url: String!, $reason: String!, $userComment: String, $urlScanId: UUID!) @auth(level: USER) {
+  reportedURL_insert(data: {
+    url: $url,
+    reason: $reason,
+    userComment: $userComment,
+    urlScanId: $urlScanId,
+    userId_expr: "auth.uid",
+    reportedAt_expr: "request.time"
+  })
+}
+
+mutation UpdateSettings($autoScanEnabled: Boolean!, $notificationLevel: String) @auth(level: USER) {
+  settings_upsert(data: {
+    userId_expr: "auth.uid",
+    autoScanEnabled: $autoScanEnabled,
+    notificationLevel: $notificationLevel,
+    createdAt_expr: "request.time",
+		updatedAt_expr: "request.time"
+  })
+}

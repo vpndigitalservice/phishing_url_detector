@@ -1,0 +1,29 @@
+type User @table {
+  authId: String!
+  createdAt: Timestamp!
+  lastActivityAt: Timestamp
+}
+
+type URLCheck @table {
+  user: User
+  url: String!
+  status: String!
+  checkedAt: Timestamp!
+  details: String
+  domainInfo: String
+}
+
+type ReportedURL @table {
+  user: User
+  url: String!
+  reportType: String!
+  reportedAt: Timestamp!
+  notes: String
+}
+
+type TrustedURL @table {
+  user: User
+  url: String!
+  addedAt: Timestamp!
+  notes: String
+}
